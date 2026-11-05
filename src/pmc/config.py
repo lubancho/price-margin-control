@@ -16,8 +16,10 @@ DEMO_SEED = 20261105
 DEMO_NOTE = "Демонстрационные синтетические данные. Не являются показателями реальной компании."
 
 
-def _load_dotenv(path: Path) -> None:
-    """Минимальное чтение .env без дополнительной библиотеки: KEY=VALUE, # — комментарий."""
+def load_dotenv(path: Path | None = None) -> None:
+    """Минимальное чтение .env без дополнительной библиотеки: KEY=VALUE, # — комментарий.
+    Уже заданные переменные окружения не перезаписываются."""
+    path = path or PROJECT_ROOT / ".env"
     if not path.exists():
         return
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -36,7 +38,7 @@ class Settings:
 
 
 def get_settings() -> Settings:
-    _load_dotenv(PROJECT_ROOT / ".env")
+    load_dotenv()
     url = os.environ.get("DATABASE_URL")
     if not url:
         raise RuntimeError(

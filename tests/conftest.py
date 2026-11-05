@@ -10,7 +10,9 @@ import os
 
 import pytest
 
-from pmc.config import DEMO_SEED
+from pmc.config import DEMO_SEED, load_dotenv
+
+load_dotenv()  # TEST_DATABASE_URL можно задать в .env
 
 
 def _test_url() -> str | None:
