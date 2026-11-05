@@ -1,6 +1,6 @@
 # Фактический результат запуска тестов
-# Дата: 2026-11-05 12:05 +06; Python 3.12.13; PostgreSQL 16.15 (локально, без Docker)
-# Команда: TEST_DATABASE_URL=... uv run pytest -v --cov
+# Дата: 2026-11-05 13:46 +06; Python 3.12.13; PostgreSQL 16.15 (локально, без Docker)
+# Команда: uv run pytest -v --cov (TEST_DATABASE_URL из .env)
 
 ============================= test session starts ==============================
 platform linux -- Python 3.12.13, pytest-9.2.0, pluggy-1.7.0 -- .venv/bin/python
@@ -117,7 +117,7 @@ Name                             Stmts   Miss  Cover
 ----------------------------------------------------
 src/pmc/__init__.py                  0      0   100%
 src/pmc/alerts.py                   88      2    98%
-src/pmc/config.py                   28      3    89%
+src/pmc/config.py                   29      3    90%
 src/pmc/db.py                       49      8    84%
 src/pmc/export.py                   75      7    91%
 src/pmc/generator/__init__.py       25      0   100%
@@ -135,5 +135,5 @@ src/pmc/rules.py                    22      1    95%
 src/pmc/run_service.py             152      6    96%
 src/pmc/scenarios.py                73      2    97%
 ----------------------------------------------------
-TOTAL                             1404     69    95%
-======================== 99 passed in 83.42s (0:01:23) =========================
+TOTAL                             1405     69    95%
+======================== 99 passed in 89.42s (0:01:29) =========================

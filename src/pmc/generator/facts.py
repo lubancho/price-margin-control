@@ -411,14 +411,15 @@ def _stock_and_write_offs(
     expired = np.zeros_like(gross)
     damaged = np.zeros_like(gross)
 
-    # Свежая продукция: производство под ожидаемый спрос с запасом; иногда «впритык» (распродано).
+    # Свежая продукция живёт один день: всё, что не продано, списывается.
     f = fresh.astype(bool)
-    buffer = rng.uniform(1.0, 1.35, (n_s, int(f.sum()), days))
-    sold_out_day = rng.random((n_s, int(f.sum()), days)) < 0.08
-    fresh_prod = np.where(sold_out_day, gross[:, f, :], np.ceil(gross[:, f, :] * buffer))
+    # Выпуск = продажи + небольшой случайный запас (в среднем 10% и ещё ~0,15 шт.); иногда «впритык».
+    extra = rng.poisson(gross[:, f, :] * 0.10 + 0.15)
+    sold_out_day = rng.random((n_s, int(f.sum()), days)) < 0.10
+    fresh_prod = np.where(sold_out_day, gross[:, f, :], gross[:, f, :] + extra)
     # Немного производим и в дни без продаж (кроме дней недоступности и закрытия).
     idle = (gross[:, f, :] == 0) & ~unavailable[:, f, :] & is_open[:, None, :]
-    fresh_prod = np.where(idle, rng.integers(0, 3, fresh_prod.shape), fresh_prod)
+    fresh_prod = np.where(idle & (rng.random(fresh_prod.shape) < 0.25), 1, fresh_prod)
     fresh_prod = np.where(unavailable[:, f, :] | ~is_open[:, None, :], 0, fresh_prod)
     leftover = fresh_prod - gross[:, f, :]
     dmg = np.minimum(leftover, rng.binomial(fresh_prod.astype(int), 0.004))
