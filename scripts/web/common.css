@@ -196,3 +196,4 @@ details.sql[open]>summary .chev{transform:rotate(90deg)}
 @media (min-width:1700px){#kpis{grid-template-columns:repeat(6,1fr)}}
 @media (max-width:860px){#kpis{grid-template-columns:1fr 1fr}}
 @media (max-width:480px){#kpis{grid-template-columns:1fr}}
+td.num{white-space:nowrap}

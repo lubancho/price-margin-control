@@ -474,6 +474,8 @@ $('#foot').innerHTML = `${esc(D.meta.note)} Статичная демо-верс
   Полная версия с согласованием рекомендаций и пересчётом — запуск через Docker (см. README).`;
 function renderAll() { syncFilters(); renderOverview(); renderPrices(); renderAlerts(); renderScenarios(); }
 State.on(renderAll);
+const navGo = Nav.go.bind(Nav);
+Nav.go = (k, push) => { navGo(k, push); syncFilters(); };
 window.addEventListener('hashchange', syncFilters);
 Nav.init();
 renderAll();
