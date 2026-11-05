@@ -1,0 +1,64 @@
+name: Проверки
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint-and-test:
+    name: Ruff и Pytest
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16.10-alpine
+        env:
+          POSTGRES_USER: pmc
+          POSTGRES_PASSWORD: ci-only
+          POSTGRES_DB: pmc_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U pmc -d pmc_test"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      TEST_DATABASE_URL: postgresql://pmc:ci-only@localhost:5432/pmc_test
+      DATABASE_URL: postgresql://pmc:ci-only@localhost:5432/pmc_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.11.32"
+      - name: Установка зависимостей
+        run: uv sync --frozen --python 3.12
+      - name: Ruff — ошибки
+        run: uv run ruff check .
+      - name: Ruff — форматирование
+        run: uv run ruff format --check .
+      - name: Тесты (модульные, интеграционные, экраны)
+        run: uv run pytest --cov --cov-report=term --cov-fail-under=85
+
+  docker:
+    name: Запуск через Docker Compose
+    runs-on: ubuntu-24.04
+    needs: lint-and-test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Подготовка .env
+        run: cp .env.example .env
+      - name: Сборка и запуск
+        run: docker compose up --build --detach
+      - name: Приложение отвечает (ожидание до 5 минут)
+        run: |
+          for i in $(seq 1 60); do
+            curl --fail --silent http://localhost:8501/_stcore/health && exit 0
+            sleep 5
+          done
+          exit 1
+      - name: Данные загружены и расчёт выполнен
+        run: |
+          docker compose exec -T db psql -U pmc -d pmc -tAc \
+            "SELECT count(*) FROM calc.pricing_run WHERE status = 'done'" | grep -qx '[1-9][0-9]*'
+      - name: Тесты внутри контейнера
+        run: docker compose run --rm app pytest -q
+      - name: Логи при ошибке
+        if: failure()
+        run: docker compose logs
