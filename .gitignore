@@ -18,3 +18,5 @@ exports/
 .idea/
 .vscode/
 .DS_Store
+# Собранная демо-версия (публикуется в ветку gh-pages)
+site/
