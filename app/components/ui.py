@@ -20,26 +20,61 @@ from pmc.db import connect
 
 ROLES = ("Аналитик", "Руководитель сети", "Операционный менеджер")
 
+# Единая дизайн-система с демо-версией (docs/08_ux_redesign.md): фиолетовый — акцент и выбранное,
+# красный / жёлтый / зелёный — только статусы и оценка «лучше / хуже для бизнеса».
 PALETTE = {
-    "accent": "#3E5C76",
-    "accent2": "#7F9BB3",
-    "crit": "#B3261E",
-    "warn": "#B26A00",
-    "ok": "#2E7D32",
-    "info": "#5B6B7A",
-    "grid": "#E1E6EB",
-    "muted": "#8A97A3",
+    "accent": "#6A52EE",
+    "accent2": "#A594FF",
+    "accent3": "#D3C9FF",
+    "crit": "#D93A52",
+    "warn": "#E9A800",
+    "ok": "#1FAE5B",
+    "info": "#5D5590",
+    "grid": "#E3DDFB",
+    "muted": "#6C6599",
 }
-SEVERITY_LABEL = {"CRIT": "Критично", "WARN": "Предупреждение"}
+NA = "нет данных"
+SEVERITY_LABEL = {"CRIT": "Критично", "WARN": "Требует внимания"}
 STATUS_LABEL = {
-    "PROPOSED": "Предложено",
-    "NO_CHANGE": "Без изменений",
-    "CONFLICT": "Конфликт",
-    "BLOCKED": "Заблокировано",
-    "ON_HOLD": "Отложено (промо)",
+    "PROPOSED": "Изменить цену",
+    "NO_CHANGE": "Цена в норме",
+    "CONFLICT": "Нужно решение вручную",
+    "BLOCKED": "Не рассчитано: ошибка данных",
+    "ON_HOLD": "Отложено: промоакция",
     "APPROVED": "Согласовано",
     "REJECTED": "Отклонено",
-    "SUPERSEDED": "Заменено",
+    "SUPERSEDED": "Заменено новым расчётом",
+}
+STATUS_HELP = {
+    "PROPOSED": "Система рассчитала новую цену по правилам маржи. Решение принимает руководитель.",
+    "NO_CHANGE": "Текущая цена соответствует правилам — менять не нужно.",
+    "CONFLICT": "Правила противоречат друг другу: допустимой цены нет. Цену задаёт руководитель.",
+    "BLOCKED": "В исходных данных ошибка — цену рассчитать нельзя.",
+    "ON_HOLD": "Товар в промоакции — изменение перенесено до окончания акции.",
+    "APPROVED": "Руководитель согласовал цену. Система не меняет цены в кассе.",
+    "REJECTED": "Руководитель отклонил рекомендацию.",
+    "SUPERSEDED": "Рекомендация заменена более новым расчётом.",
+}
+DQ_LABEL = {
+    "DUPLICATE": "Дубли строк — исключены автоматически",
+    "FK_VIOLATION": "Ссылка на несуществующую точку или товар",
+    "DISCOUNT_OUT_OF_RANGE": "Скидка вне допустимого диапазона",
+    "NON_POSITIVE_COST": "Себестоимость ≤ 0",
+    "NON_POSITIVE_PRICE": "Цена ≤ 0",
+    "MISSING_PRICE": "Нет цены",
+    "MISSING_VALUE": "Пустое обязательное поле",
+    "OUT_OF_RANGE": "Значение вне диапазона",
+}
+HELP = {
+    "margin": "Валовая маржинальность = (выручка − себестоимость проданного) / выручка. "
+    "Считается по продажам с известной себестоимостью на дату продажи.",
+    "revenue": "Выручка = продажи за вычетом возвратов и скидок, без отменённых чеков.",
+    "gp": "Валовая прибыль = выручка − себестоимость проданного (без аренды, зарплат и прочих расходов).",
+    "proposed": "Позиции, для которых система рассчитала новую цену. Цены в кассе система не меняет.",
+    "conflict": "Минимальная маржа требует цену выше лимита изменения — нужна цена вручную.",
+    "dq": "Позиции, по которым цену рассчитать нельзя из-за ошибок данных.",
+    "plan_margin": "Маржа при текущей цене и себестоимости на дату расчёта.",
+    "after_margin": "Маржа при рекомендуемой цене и той же себестоимости.",
 }
 ALERT_STATUS_LABEL = {
     "NEW": "Новое",
@@ -50,8 +85,15 @@ ALERT_STATUS_LABEL = {
 
 pio.templates["pmc"] = go.layout.Template(
     layout=go.Layout(
-        font={"family": "Inter, Segoe UI, sans-serif", "size": 13, "color": "#1F2933"},
-        colorway=[PALETTE["accent"], PALETTE["accent2"], "#A3B8C9", PALETTE["warn"], PALETTE["ok"]],
+        font={"family": "Manrope, Segoe UI, sans-serif", "size": 13, "color": "#1E1745"},
+        colorway=[
+            PALETTE["accent"],
+            PALETTE["accent2"],
+            "#EC6A9C",
+            "#F2A43A",
+            "#2FB9A5",
+            "#4F8CF0",
+        ],
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         xaxis={"gridcolor": PALETTE["grid"], "zeroline": False},
@@ -67,16 +109,36 @@ pio.templates.default = "plotly_white+pmc"
 _CSS = """
 <style>
 .block-container {padding-top: 1.6rem; padding-bottom: 1rem; max-width: 1500px;}
-[data-testid="stMetric"] {background: #FFFFFF; border: 1px solid #E1E6EB; border-radius: 8px;
-  padding: 10px 14px; min-height: 108px;}
-[data-testid="stMetricLabel"] p {font-size: 0.82rem; color: #5B6B7A;}
-[data-testid="stMetricValue"] {font-size: 1.55rem;}
-.pmc-footer {color: #8A97A3; font-size: 0.78rem; border-top: 1px solid #E1E6EB; margin-top: 1.5rem;
+h1 {letter-spacing: -0.02em;}
+[data-testid="stSidebar"] {background: #4536A8;}
+[data-testid="stSidebarNav"] span, [data-testid="stSidebar"] .stMarkdown p,
+[data-testid="stSidebar"] [data-testid="stWidgetLabel"] p, [data-testid="stSidebar"] [data-testid="stCaptionContainer"],
+[data-testid="stSidebar"] .pmc-role, [data-testid="stSidebar"] strong {color: #FFFFFF !important;}
+[data-testid="stSidebarNav"] a[aria-current="page"] {background: rgba(255,255,255,.18);}
+[data-testid="stMetric"] {background: #FFFFFF; border: 1px solid #E3DDFB; border-radius: 16px;
+  padding: 12px 16px; min-height: 112px; box-shadow: 0 8px 24px rgba(70,50,170,.07);}
+[data-testid="stMetricLabel"] p {font-size: 0.8rem; color: #544C86; font-weight: 700;}
+[data-testid="stMetricValue"] {font-size: 1.6rem; font-weight: 800;}
+.ux-lvl {display:flex; gap:10px; align-items:center; margin:1.4rem 0 .4rem;}
+.ux-lvl b {font-size:1.15rem;}
+.ux-lv {font-size:.68rem; font-weight:800; letter-spacing:.1em; text-transform:uppercase; color:#6A52EE;
+  background:#EFEBFF; padding:2px 9px; border-radius:999px;}
+.ux-attn {background:#FFFFFF; border:1px solid #E3DDFB; border-left:5px solid var(--ac,#8B75FF);
+  border-radius:12px; padding:10px 14px; margin:0 0 4px;}
+.ux-attn .t {font-weight:800;} .ux-attn .w {font-size:.88rem; color:#2E2660;}
+.ux-pill {display:inline-block; padding:1px 9px; border-radius:999px; font-size:.72rem; font-weight:800;
+  margin-right:6px;}
+.ux-pill.crit {background:#D93A52; color:#fff;} .ux-pill.warn {background:#FCD34D; color:#4A3500;}
+.ux-pill.info {background:#EFEBFF; color:#6A52EE;} .ux-pill.ok {background:#4ADE80; color:#073B1D;}
+.ux-scope {background:#FFF4D4; border:1px solid #F0CF6A; border-radius:10px; padding:6px 12px;
+  font-size:.86rem; margin:4px 0 10px;}
+.pmc-footer {color: #6C6599; font-size: 0.78rem; border-top: 1px solid #E3DDFB; margin-top: 1.5rem;
   padding-top: 0.4rem;}
-.pmc-box {background: #FFFFFF; border: 1px solid #E1E6EB; border-left: 4px solid #3E5C76;
-  border-radius: 6px; padding: 10px 14px; margin: 4px 0 10px 0;}
-.pmc-box.warn {border-left-color: #B26A00;}
-.pmc-role {font-size: 0.75rem; color: #8A97A3;}
+.pmc-box {background: #FFFFFF; border: 1px solid #E3DDFB; border-left: 4px solid #6A52EE;
+  border-radius: 10px; padding: 10px 14px; margin: 4px 0 10px 0;}
+.pmc-box.warn {border-left-color: #E9A800; background:#FFFBEA;}
+.pmc-box.crit {border-left-color: #D93A52; background:#FDF0F2;}
+.pmc-role {font-size: 0.75rem; opacity: .85;}
 </style>
 """
 
@@ -164,6 +226,81 @@ def box(text: str, kind: str = "") -> None:
     st.markdown(f"<div class='pmc-box {kind}'>{text}</div>", unsafe_allow_html=True)
 
 
+LEVELS = {"crit": "Критично", "warn": "Требует внимания", "info": "Информация"}
+_AC = {"crit": "#D93A52", "warn": "#E9A800", "info": "#8B75FF"}
+
+
+def level(tag: str, title: str, hint: str | None = None) -> None:
+    """Заголовок уровня иерархии: «Состояние», «Внимание», «Подробно», «Методика»."""
+    st.markdown(
+        f"<div class='ux-lvl'><span class='ux-lv'>{tag}</span><b>{title}</b></div>",
+        unsafe_allow_html=True,
+    )
+    if hint:
+        st.caption(hint)
+
+
+def scope_note(text: str) -> None:
+    """Плашка об области действия показателя (например, «рассчитано по всей сети»)."""
+    st.markdown(f"<div class='ux-scope'>ⓘ {text}</div>", unsafe_allow_html=True)
+
+
+def attention(items: list[dict], key: str) -> None:
+    """Блок «Что требует внимания»: уровень, вывод, объяснение, число и переход к деталям.
+
+    items: {lvl: crit|warn|info, title, why, value, page?, state?: dict}
+    """
+    if not items:
+        st.success("Проблем, требующих внимания, не найдено.")
+        return
+    for i, it in enumerate(items):
+        c1, c2 = st.columns([8.6, 1.4], vertical_alignment="center")
+        c1.markdown(
+            f"<div class='ux-attn' style='--ac:{_AC[it['lvl']]}'>"
+            f"<span class='ux-pill {it['lvl']}'>{LEVELS[it['lvl']]}</span>"
+            f"<span class='t'>{it['title']}</span> · <b>{it['value']}</b>"
+            f"<div class='w'>{it['why']}</div></div>",
+            unsafe_allow_html=True,
+        )
+        if it.get("page") and c2.button("Открыть →", key=f"{key}_{i}", width="stretch"):
+            for k, v in (it.get("state") or {}).items():
+                st.session_state[k] = v
+            st.switch_page(it["page"])
+
+
+def styled(df: pd.DataFrame, formats: dict[str, str]) -> pd.DataFrame:
+    """Таблица в русском формате; пустые значения — «нет данных», а не None и не ноль.
+
+    formats: колонка → rub | rub2 | pct | spct | pp | int | num1. Отформатированные колонки
+    становятся текстом (Streamlit не умеет подписывать пустые числовые ячейки), поэтому
+    выравнивание по правому краю задаёт num_cfg().
+    """
+    fn = {
+        "rub": lambda v: fmt_rub(v, full=True),
+        "rub2": lambda v: fmt_rub(v, 2, full=True),
+        "pct": fmt_pct,
+        "spct": lambda v: fmt_pct(v, signed=True),
+        "pp": fmt_pp,
+        "int": fmt_int,
+        "num1": lambda v: fmt_num(v, 1),
+    }
+    view = df.copy()
+    for c, k in formats.items():
+        if c in view.columns and k in fn:
+            view[c] = view[c].map(fn[k])
+    for c in view.columns:
+        if view[c].dtype == object:
+            view[c] = view[c].map(
+                lambda v: NA if v is None or (isinstance(v, float) and pd.isna(v)) else v
+            )
+    return view
+
+
+def num_cfg(formats: dict[str, str]) -> dict:
+    """Выравнивание чисел по правому краю для колонок, отформатированных styled()."""
+    return {c: st.column_config.TextColumn(alignment="right") for c in formats}
+
+
 # --- Кэшированные данные -----------------------------------------------------------------------
 
 
@@ -222,11 +359,11 @@ def _num(x) -> float | None:
         return None
 
 
-def fmt_rub(x, digits: int = 0) -> str:
+def fmt_rub(x, digits: int = 0, full: bool = False) -> str:
     v = _num(x)
     if v is None:
-        return "н/д"
-    if abs(v) >= 1_000_000:
+        return NA
+    if abs(v) >= 1_000_000 and not full:
         return f"{v / 1_000_000:,.1f} млн ₽".replace(",", " ").replace(".", ",")
     return f"{v:,.{digits}f} ₽".replace(",", " ").replace(".", ",")
 
@@ -234,7 +371,7 @@ def fmt_rub(x, digits: int = 0) -> str:
 def fmt_pct(x, digits: int = 1, signed: bool = False) -> str:
     v = _num(x)
     if v is None:
-        return "н/д"
+        return NA
     s = f"{v * 100:+.{digits}f}%" if signed else f"{v * 100:.{digits}f}%"
     return s.replace(".", ",")
 
@@ -242,12 +379,18 @@ def fmt_pct(x, digits: int = 1, signed: bool = False) -> str:
 def fmt_pp(x, digits: int = 1) -> str:
     """Разница долей в процентных пунктах: 0,018 → «+1,8 п. п.»."""
     v = _num(x)
-    return "н/д" if v is None else f"{v * 100:+.{digits}f}".replace(".", ",") + " п. п."
+    # ASCII-минус: по нему st.metric определяет направление и цвет изменения
+    return NA if v is None else f"{v * 100:+.{digits}f}".replace(".", ",") + " п. п."
 
 
 def fmt_int(x) -> str:
     v = _num(x)
-    return "н/д" if v is None else f"{v:,.0f}".replace(",", " ")
+    return NA if v is None else f"{v:,.0f}".replace(",", " ")
+
+
+def fmt_num(x, digits: int = 1) -> str:
+    v = _num(x)
+    return NA if v is None else f"{v:,.{digits}f}".replace(",", " ").replace(".", ",")
 
 
 def to_display(df: pd.DataFrame) -> pd.DataFrame:

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Контроль цен и маржинальности — демо</title>
-<meta name="description" content="Интерактивный демо-дашборд: выручка, маржа, рекомендуемые цены, предупреждения, сценарии. Синтетические данные.">
+<meta name="description" content="Интерактивный демо-дашборд: маржинальность сети, рекомендации по ценам с объяснением, предупреждения, сценарии. Синтетические данные.">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%234536a8'/%3E%3Ctext x='16' y='21' font-size='13' font-family='Arial' font-weight='700' fill='%23fff' text-anchor='middle'%3E%E2%82%BD%3C/text%3E%3C/svg%3E">
@@ -12,112 +12,138 @@
 </head>
 <body>
 <div class="app">
-<aside>
-  <div class="brand"><div class="logo">ЦМ</div><div><div class="t">Контроль цен и&nbsp;маржи</div><div class="k">Демо · портфолио аналитика</div></div></div>
-  <button class="nav" data-view="overview"><span class="ic">1</span>Обзор</button>
-  <button class="nav" data-view="prices"><span class="ic">2</span>Анализ цен<span class="cnt" id="cnt-prices"></span></button>
-  <button class="nav" data-view="alerts"><span class="ic">3</span>Предупреждения<span class="cnt bad" id="cnt-alerts"></span></button>
-  <button class="nav" data-view="scenarios"><span class="ic">4</span>Сценарии</button>
-  <button class="nav" data-view="history"><span class="ic">5</span>История и правила</button>
+<aside aria-label="Разделы">
+  <div class="brand"><div class="logo" aria-hidden="true">ЦМ</div><div><div class="t">Контроль цен и&nbsp;маржи</div><div class="k">Демо · портфолио аналитика</div></div></div>
+  <nav aria-label="Основная навигация">
+    <button class="nav" data-view="overview"><span class="ic">1</span>Главная</button>
+    <button class="nav" data-view="prices"><span class="ic">2</span>Цены и рекомендации<span class="cnt" id="cnt-prices" title="Предложено изменить цен"></span></button>
+    <button class="nav" data-view="alerts"><span class="ic">3</span>Предупреждения<span class="cnt bad" id="cnt-alerts" title="Открытых критичных"></span></button>
+    <button class="nav" data-view="scenarios"><span class="ic">4</span>Что будет, если изменить цены?</button>
+    <button class="nav" data-view="history"><span class="ic">5</span>Методика и история</button>
+  </nav>
   <div class="side-foot">
     <b>Канаева Любовь</b>
     <span>Учебный проект бизнес-аналитика</span>
     <a href="https://github.com/lubancho/price-margin-control" target="_blank" rel="noopener">Код и документация на GitHub →</a>
-    <span>Данные синтетические.</span>
-    <button class="theme-btn"><svg class="i" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg><span class="theme-label">Тёмная тема</span></button>
+    <span>Данные синтетические. Демо-версия только показывает расчёт — согласование цен доступно в полной версии.</span>
+    <button class="theme-btn"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg><span class="theme-label">Тёмная тема</span></button>
   </div>
 </aside>
 
 <main>
-  <div class="filterbar" id="filterbar">
-    <div class="seg" id="f-period"></div>
-    <select class="sel" id="f-store"></select>
-    <div class="chips" id="f-cats"></div>
+  <div class="filterbar" id="filterbar" role="search" aria-label="Фильтры">
+    <div class="seg" id="f-period" role="group" aria-label="Период продаж"></div>
+    <label class="sr" for="f-store">Торговая точка</label><select class="sel" id="f-store"></select>
+    <div class="chips" id="f-cats" role="group" aria-label="Категория"></div>
     <span class="sp"></span>
-    <div class="chips" id="f-active"></div>
+    <div class="chips" id="f-active" aria-live="polite"></div>
   </div>
+  <div class="loading" id="loading">Загрузка данных…</div>
+  <noscript><div class="callout bad">Для работы дашборда нужен JavaScript.</div></noscript>
 
-  <!-- 1. Обзор -->
-  <section class="view" id="v-overview">
-    <div class="eyebrow"><span class="dot"></span>Демо · сеть суши-маркетов · 15 точек · 150 позиций</div>
-    <h1>Контроль цен и <em>маржинальности</em></h1>
-    <p class="lead">Где сеть теряет маржу, какие цены пора пересмотреть и почему. <b>Нажимайте на карточки, столбцы и сегменты</b> —
-      дашборд отфильтруется по точке или категории.</p>
-    <div class="rule"></div>
+  <!-- 1. Главная -->
+  <section class="view" id="v-overview" aria-labelledby="h-ov">
+    <div class="eyebrow"><span class="dot"></span>Сеть суши-маркетов · 15 точек · 150 позиций · <span id="ov-period"></span></div>
+    <h1 id="h-ov">Что происходит <em>с ценами и маржой</em></h1>
+    <p class="lead" id="ov-summary"></p>
+
+    <div class="lvl"><span class="lv">Состояние</span><h2>Основные показатели</h2><span class="hint" id="ov-base"></span></div>
     <div class="grid g-kpi" id="kpis"></div>
-    <div class="grid g-73 mt">
-      <div class="card"><div class="card-head"><h3>Выручка и маржинальность по дням</h3><span class="hint" id="trend-hint"></span></div><div class="chart tall" id="c-trend"></div></div>
-      <div class="card"><div class="card-head"><h3>Вклад категорий</h3><span class="hint">клик — фильтр</span></div><div class="chart tall" id="c-cats"></div></div>
-    </div>
-    <div class="grid g-2 mt">
-      <div class="card"><div class="card-head"><h3>Точки: валовая маржинальность</h3><span class="hint">клик по столбцу — фильтр по точке</span></div><div class="chart tall" id="c-stores"></div></div>
-      <div class="card"><div class="card-head"><h3>Что система предлагает сделать с ценами</h3><span class="hint">клик — открыть список</span></div><div class="chart tall" id="c-status"></div></div>
+
+    <div class="lvl"><span class="lv">Внимание</span><h2>Что требует внимания</h2><span class="hint">по важности · нажмите, чтобы открыть список</span></div>
+    <div class="attn" id="attn"></div>
+
+    <div class="lvl"><span class="lv">Проверить</span><h2>Проверить в первую очередь</h2><span class="hint" id="prio-hint"></span></div>
+    <div class="card"><div id="t-prio"></div></div>
+
+    <div class="lvl"><span class="lv">Подробно</span><h2>Динамика и сравнение точек</h2></div>
+    <div class="grid g-2">
+      <div class="card"><div class="card-head"><h3>Как меняется маржинальность, % по дням</h3><span class="hint" id="trend-hint"></span></div><div class="chart" id="c-trend" role="img" aria-label="График маржинальности и выручки по дням"></div></div>
+      <div class="card"><div class="card-head"><h3>В каких точках маржа ниже средней по сети</h3><span class="hint">клик — фильтр по точке</span></div><div class="chart tall" id="c-stores" role="img" aria-label="Маржинальность точек"></div></div>
     </div>
   </section>
 
-  <!-- 2. Анализ цен -->
-  <section class="view" id="v-prices">
+  <!-- 2. Цены и рекомендации -->
+  <section class="view" id="v-prices" aria-labelledby="h-pr">
     <div class="eyebrow"><span class="dot"></span><span id="prices-eyebrow"></span></div>
-    <h1>Анализ <em>цен</em></h1>
-    <p class="lead">Рекомендация по каждой паре «точка × товар» с объяснением. <b>Нажмите на строку</b> — откроется карточка с историей цены и себестоимости.</p>
-    <div class="rule"></div>
-    <div class="grid g-46">
-      <div class="card">
-        <div class="eyebrow"><span class="dot"></span>Статус рекомендации</div><div class="chips" id="p-status"></div>
-        <div class="eyebrow mt"><span class="dot warn"></span>Тип отклонения</div><div class="chips" id="p-dev"></div>
-      </div>
-      <div class="card"><div class="card-head"><h3>На сколько система предлагает изменить цены</h3><span class="hint">предложенные изменения, % к текущей цене</span></div><div class="chart short" id="c-hist"></div></div>
+    <h1 id="h-pr">Цены <em>и рекомендации</em></h1>
+    <p class="lead">Для каждой пары «точка × товар» система рассчитала цену по правилам маржи. <b>Нажмите на строку</b> — откроется карточка
+      с объяснением: почему такая цена, что изменится и какие есть ограничения.</p>
+    <div class="scope" id="prices-scope"></div>
+    <div class="card">
+      <div class="eyebrow"><span class="dot"></span>Статус рекомендации</div><div class="chips" id="p-status" role="group" aria-label="Статус"></div>
+      <div class="eyebrow mt"><span class="dot warn"></span>Что не так с текущей ценой</div><div class="chips" id="p-dev" role="group" aria-label="Тип отклонения"></div>
     </div>
     <div class="card mt"><div id="t-prices"></div></div>
+    <details class="card mt"><summary class="link">Подробнее: на сколько система предлагает изменить цены</summary>
+      <div class="chart short mt" id="c-hist" role="img" aria-label="Распределение предлагаемых изменений цены"></div>
+      <p class="hint">Изменение ограничено лимитом правила (по умолчанию ±10%), поэтому большинство предложений не превышают 10%.</p>
+    </details>
   </section>
 
   <!-- 3. Предупреждения -->
-  <section class="view" id="v-alerts">
-    <div class="eyebrow"><span class="dot bad"></span>Мониторинг</div>
-    <h1>Предупреждения <em>и ошибки данных</em></h1>
-    <p class="lead">Повторный расчёт не создаёт дублей — растёт счётчик «повторов». <b>Нажмите на тип</b> в диаграмме, чтобы отфильтровать список.</p>
-    <div class="rule"></div>
-    <div class="grid g-kpi" id="a-kpis"></div>
-    <div class="grid g-46 mt">
-      <div class="card"><div class="card-head"><h3>Открытые по типам</h3></div><div class="chart tall" id="c-atypes"></div></div>
-      <div class="card"><div class="chips" id="a-type" style="margin-bottom:10px"></div><div id="t-alerts"></div></div>
-    </div>
-    <div class="card mt"><div class="card-head"><h3>Проверки качества исходных данных</h3><span class="hint">строки с ошибками не попадают в расчёты</span></div><div id="t-dq"></div></div>
+  <section class="view" id="v-alerts" aria-labelledby="h-al">
+    <div class="eyebrow"><span class="dot bad"></span><span id="al-eyebrow">Мониторинг</span></div>
+    <h1 id="h-al">Предупреждения</h1>
+    <p class="lead">Сначала — ошибки, из-за которых расчёт недостоверен, затем — проблемы с маржой, затем — информация.
+      Повторное обнаружение той же проблемы не создаёт дубль: растёт счётчик «повторов».</p>
+    <div class="grid g-3 mt" id="a-levels"></div>
+    <div class="lvl"><span class="lv">По типам</span><h2>Какие проблемы найдены</h2><span class="hint">нажмите на строку — список ниже отфильтруется</span></div>
+    <div class="card"><div id="t-types"></div></div>
+    <div class="lvl"><span class="lv">Список</span><h2 id="a-list-title">Все открытые предупреждения</h2><button class="link" id="a-reset" hidden>Показать все</button></div>
+    <div class="card"><div id="t-alerts"></div></div>
   </section>
 
-  <!-- 4. Сценарии -->
-  <section class="view" id="v-scenarios">
-    <div class="eyebrow"><span class="dot"></span>Что если</div>
-    <h1>Сценарии <em>цен и спроса</em></h1>
-    <p class="lead">Двигайте ползунки — рекомендации пересчитываются прямо в браузере по тому же алгоритму, что в системе:
-      целевая маржа → округление → минимальная маржа → лимит изменения → промо. <b>Это сценарий, а не прогноз.</b></p>
-    <div class="rule"></div>
-    <div class="grid g-46">
+  <!-- 4. Что будет, если изменить цены? -->
+  <section class="view" id="v-scenarios" aria-labelledby="h-sc">
+    <div class="eyebrow"><span class="dot"></span>Расчёт «что если» · не прогноз</div>
+    <h1 id="h-sc">Что будет, если <em>изменить цены?</em></h1>
+    <p class="lead">Поменяйте правило ценообразования сети — система пересчитает рекомендуемые цены и покажет, как изменились бы
+      выручка и валовая прибыль на продажах последних 28 дней.</p>
+    <div class="grid g-2 mt">
+      <div class="callout"><b>Что вы меняете.</b> Целевую и минимальную маржу, лимит изменения цены, шаг округления, разрешение снижать цену
+        и (по желанию) реакцию спроса на цену.</div>
+      <div class="callout"><b>Что пересчитывается.</b> Рекомендуемая цена каждой позиции по тому же алгоритму, что в системе,
+        затем выручка, валовая прибыль и маржинальность на тех же объёмах продаж.</div>
+    </div>
+    <div class="grid g-46 mt">
       <div class="card">
         <div class="eyebrow"><span class="dot"></span>Правило сети</div>
         <div class="ctl" id="s-ctl"></div>
       </div>
       <div>
-        <div class="hero" id="s-hero"></div>
+        <div class="hero" id="s-hero" aria-live="polite"></div>
         <div class="grid g-2 mt">
-          <div class="card"><div class="card-head"><h3>Статусы рекомендаций</h3></div><div class="chart" id="c-sstatus"></div></div>
-          <div class="card"><div class="card-head"><h3>Валовая прибыль по категориям, 28 дней</h3></div><div class="chart" id="c-scats"></div></div>
+          <div class="card"><div class="card-head"><h3>Сколько цен изменится</h3></div><div class="chart" id="c-sstatus" role="img" aria-label="Статусы рекомендаций в сценарии"></div></div>
+          <div class="card"><div class="card-head"><h3>Валовая прибыль по категориям, ₽ за 28 дней</h3></div><div class="chart" id="c-scats" role="img" aria-label="Прибыль по категориям: сейчас и в сценарии"></div></div>
         </div>
       </div>
     </div>
-    <div class="card mt"><div class="card-head"><h3>Самые заметные изменения в сценарии</h3><span class="hint">клик — карточка предложения</span></div><div id="t-scen"></div></div>
-    <div class="callout warn mt" id="s-assume"></div>
+    <div class="card mt"><div class="card-head"><h3>Позиции с наибольшим изменением прибыли</h3><span class="hint">клик — карточка позиции</span></div><div id="t-scen"></div></div>
+    <div class="grid g-2 mt">
+      <div class="callout warn" id="s-assume"></div>
+      <div class="callout warn"><b>Почему это не прогноз продаж.</b> В проекте нет статистической модели спроса: реакция покупателей на цену
+        не оценена по данным. При «фиксированном спросе» продажи считаются неизменными, при «коэффициенте» — меняются по заданному вручную
+        правилу. Результат показывает масштаб эффекта правила, а не ожидаемую выручку.</div>
+    </div>
   </section>
 
-  <!-- 5. История -->
-  <section class="view" id="v-history">
-    <div class="eyebrow"><span class="dot"></span>Аудит</div>
-    <h1>История <em>и правила</em></h1>
-    <p class="lead">Журнал только дополняется: записи нельзя изменить или удалить. Использованные правила заблокированы — изменение создаёт новую версию.</p>
-    <div class="rule"></div>
+  <!-- 5. Методика и история -->
+  <section class="view" id="v-history" aria-labelledby="h-hi">
+    <div class="eyebrow"><span class="dot"></span>Для аналитика и аудита</div>
+    <h1 id="h-hi">Методика <em>и история</em></h1>
+    <p class="lead">Как считаются показатели и цены, какие правила действуют, что исключено из расчёта и кто что делал.
+      Журнал только дополняется: записи нельзя изменить или удалить.</p>
     <div class="grid g-2">
-      <div class="card"><div class="card-head"><h3>Действующие правила ценообразования</h3><span class="hint" id="rules-hint"></span></div><div id="t-rules"></div></div>
+      <div class="card method" id="m-method"></div>
+      <div>
+        <div class="card"><div class="card-head"><h3>Действующие правила ценообразования</h3><span class="hint" id="rules-hint"></span></div><div id="t-rules"></div></div>
+        <div class="card mt"><div class="card-head"><h3>Качество исходных данных</h3><span class="hint">строки с ошибками не попадают в расчёт</span></div><div id="t-dq"></div></div>
+      </div>
+    </div>
+    <div class="grid g-2 mt">
       <div class="card"><div class="card-head"><h3>Запуски расчёта</h3></div><div id="t-runs"></div></div>
+      <div class="card method" id="m-limits"></div>
     </div>
     <div class="card mt"><div class="card-head"><h3>Журнал событий</h3></div><div id="t-events"></div></div>
   </section>
@@ -127,7 +153,7 @@
 </div>
 
 <div class="drawer-bg" id="drawer-bg"></div>
-<div class="drawer" id="drawer"><button class="close" aria-label="Закрыть">×</button><div id="drawer-body"></div></div>
+<div class="drawer" id="drawer" aria-label="Карточка"><button class="close" aria-label="Закрыть карточку и вернуться к списку">×</button><div id="drawer-body"></div></div>
 
 <script src="echarts.min.js"></script>
 <script src="data.js"></script>

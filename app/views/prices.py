@@ -1,4 +1,4 @@
-"""Экран «Анализ цен» (макеты 3 и 4): рекомендации последнего расчёта, фильтры, согласование, карточка."""
+"""Экран «Цены и рекомендации» (макеты 3 и 4): рекомендации последнего расчёта, фильтры, согласование, карточка."""
 
 from __future__ import annotations
 
@@ -16,8 +16,9 @@ from pmc.pricing import margin
 from pmc.run_service import RunError, decide, start_run
 
 ui.page_header(
-    "Анализ цен",
-    "Рекомендации по последнему расчёту. Система не меняет цены в кассе — "
+    "Цены и рекомендации",
+    "Для каждой пары «точка × товар» система рассчитала цену по правилам маржи. Выберите строку и "
+    "откройте карточку — там объяснено, почему такая цена. Система не меняет цены в кассе: "
     "согласование только фиксирует решение.",
 )
 
@@ -123,21 +124,39 @@ with f[3]:
     f_text = st.text_input("Товар", placeholder="название или артикул")
 SCOPE_LABEL = {"global": "Вся сеть", "category": "Категория", "store": "Точка", "product": "Товар"}
 DEVIATIONS = {
-    "below_cost": "Цена ниже себестоимости",
-    "below_min": "Ниже минимальной маржи",
-    "below_target": "Ниже целевой маржи",
-    "network": "Отклонение от медианы сети",
     "data_error": "Ошибка данных",
+    "below_cost": "Цена ниже себестоимости",
+    "below_min": "Маржа ниже минимальной",
+    "below_target": "Маржа ниже целевой",
+    "network": "Цена отличается от сети",
     "none": "Без отклонений",
 }
+# Переход с главной: «Открыть» в блоке «Что требует внимания» передаёт готовый фильтр.
+for key, preset in (("pr_dev", "pr_preset_dev"), ("pr_status", "pr_preset_status")):
+    if preset in st.session_state:
+        st.session_state[key] = st.session_state.pop(preset)
 with f[4]:
     f_dev = st.multiselect(
-        "Тип отклонения", list(DEVIATIONS), format_func=DEVIATIONS.get, placeholder="Любой"
+        "Что не так с ценой",
+        list(DEVIATIONS),
+        format_func=DEVIATIONS.get,
+        placeholder="Любое",
+        key="pr_dev",
     )
 with f[5]:
     f_status = st.multiselect(
-        "Статус", list(ui.STATUS_LABEL), format_func=ui.STATUS_LABEL.get, placeholder="Все"
+        "Статус",
+        list(ui.STATUS_LABEL),
+        format_func=ui.STATUS_LABEL.get,
+        placeholder="Все",
+        key="pr_status",
+        help="\n".join(f"**{ui.STATUS_LABEL[k]}** — {v}" for k, v in ui.STATUS_HELP.items()),
     )
+ui.scope_note(
+    f"Цены рассчитаны на {run['as_of_date']:%d.%m.%Y}; период влияет только на фактическую маржу "
+    "за период. «Предлагаемая цена» — расчёт системы, а не согласованная и не применённая в кассе цена. "
+    "«—» — для этого статуса новая цена не предлагается; «нет данных» — значение отсутствует в исходных данных."
+)
 
 df = recs.copy()
 df["plan_margin"] = [
@@ -208,68 +227,56 @@ df = df.assign(
 )
 df = df.sort_values(["_o", "_c", "store_id", "product_id"]).reset_index(drop=True)
 
-show = ui.to_display(
-    pd.DataFrame(
-        {
-            "Точка": df["store_name"],
-            "Товар": df["product_name"],
-            "Категория": df["category_name"],
-            "Себестоимость, ₽": df["unit_cost"],
-            "Цена, ₽": df["current_price"],
-            "Маржа план, %": df["plan_margin"].map(
-                lambda v: v * 100 if v is not None and not pd.isna(v) else None
-            ),
-            "Маржа факт, %": df["gross_margin"].map(
-                lambda v: v * 100 if v is not None and not pd.isna(v) else None
-            ),
-            "Рекомендация, ₽": df["recommended_price"].where(
-                df["status"].isin(["PROPOSED", "APPROVED", "REJECTED"])
-            ),
-            "Изм., ₽": df["change_abs"].where(
-                df["status"].isin(["PROPOSED", "APPROVED", "REJECTED"])
-            ),
-            "Изм., %": df["change_pct"]
-            .map(lambda v: v * 100 if v is not None and not pd.isna(v) else None)
-            .where(df["status"].isin(["PROPOSED", "APPROVED", "REJECTED"])),
-            "Причина": df["reason_text"],
-            "Статус": df["status"].map(ui.STATUS_LABEL),
-        }
-    )
+has_rec = df["status"].isin(["PROPOSED", "APPROVED", "REJECTED"])
+df["after_margin"] = [
+    margin(p, c) if h and c is not None and not pd.isna(c) and c > 0 else None
+    for p, c, h in zip(df["recommended_price"], df["unit_cost"], has_rec, strict=True)
+]
+show = pd.DataFrame(
+    {
+        "Товар": df["product_name"],
+        "Точка": df["store_name"],
+        "Цена сейчас, ₽": df["current_price"],
+        "Предлагаемая, ₽": df["recommended_price"].where(has_rec),
+        "Изм., ₽": df["change_abs"].where(has_rec),
+        "Изм., %": df["change_pct"].where(has_rec),
+        "Маржа сейчас": df["plan_margin"],
+        "Маржа после": df["after_margin"],
+        "Маржа факт за период": df["gross_margin"],
+        "Причина": df["reason_text"],
+        "Статус": df["status"].map(ui.STATUS_LABEL),
+    }
 )
+fmts = {
+    "Цена сейчас, ₽": "rub",
+    "Предлагаемая, ₽": "rub",
+    "Изм., ₽": "rub",
+    "Изм., %": "spct",
+    "Маржа сейчас": "pct",
+    "Маржа после": "pct",
+    "Маржа факт за период": "pct",
+}
+view = ui.styled(show, fmts)
+# «—» — цена для этого статуса не предлагается (это не отсутствие данных)
+view.loc[~has_rec.to_numpy(), ["Предлагаемая, ₽", "Изм., ₽", "Изм., %", "Маржа после"]] = "—"
 event = st.dataframe(
-    show,
+    view,
     hide_index=True,
     height=460,
     on_select="rerun",
     selection_mode="multi-row",
     key="rec_table",
     column_config={
-        "Точка": st.column_config.TextColumn(width="medium"),
+        **ui.num_cfg(fmts),
         "Товар": st.column_config.TextColumn(width="medium"),
-        "Категория": None,
-        "Себестоимость, ₽": st.column_config.NumberColumn(
-            "Себест., ₽", format="%.2f", width="small"
+        "Точка": st.column_config.TextColumn(width="medium"),
+        "Маржа сейчас": st.column_config.TextColumn(help=ui.HELP["plan_margin"], alignment="right"),
+        "Маржа после": st.column_config.TextColumn(help=ui.HELP["after_margin"], alignment="right"),
+        "Маржа факт за период": st.column_config.TextColumn(
+            help="Фактическая валовая маржинальность позиции за выбранный период", alignment="right"
         ),
-        "Цена, ₽": st.column_config.NumberColumn(format="%.0f", width="small"),
-        "Маржа план, %": st.column_config.NumberColumn(
-            "Маржа, %",
-            format="%.1f",
-            width="small",
-            help="Плановая маржа при текущей цене и себестоимости",
-        ),
-        "Маржа факт, %": st.column_config.NumberColumn(
-            "Факт, %",
-            format="%.1f",
-            width="small",
-            help="Фактическая валовая маржинальность за выбранный период",
-        ),
-        "Рекомендация, ₽": st.column_config.NumberColumn(
-            "Рекоменд., ₽", format="%.0f", width="small"
-        ),
-        "Изм., ₽": st.column_config.NumberColumn(format="%+.0f", width="small"),
-        "Изм., %": st.column_config.NumberColumn(format="%+.1f", width="small"),
         "Причина": st.column_config.TextColumn(width="large"),
-        "Статус": st.column_config.TextColumn(width="small"),
+        "Статус": st.column_config.TextColumn(width="medium"),
     },
 )
 selected = df.iloc[event.selection.rows] if event and event.selection.rows else df.iloc[0:0]
@@ -277,34 +284,75 @@ st.caption(f"Показано {len(df)} из {len(recs)} предложений.
 
 
 # --- Карточка предложения -------------------------------------------------------------------------
-@st.dialog("Карточка товарного предложения", width="large")
+@st.dialog("Карточка изменения цены", width="large")
 def offer_card(r) -> None:
     conn = ui.get_conn()
-    sev = "КРИТИЧНО" if r.deviation in ("below_cost", "below_min", "data_error") else ""
-    st.markdown(f"**{r.product_name}** · {r.sku} · {r.category_name} · {r.store_name}")
-    if sev:
-        st.error(f"{sev}: {DEVIATIONS[r.deviation]}")
-    c = st.columns(4)
-    c[0].metric("Себестоимость", ui.fmt_rub(r.unit_cost, 2))
-    c[1].metric(
-        "Текущая цена",
-        ui.fmt_rub(r.current_price),
-        ui.fmt_pct(r.plan_margin) + " маржа",
-        delta_color="off",
-        delta_arrow="off",
+    proposed = r.status in ("PROPOSED", "APPROVED", "REJECTED")
+    st.markdown(f"### 1. {r.product_name} · {r.store_name}")
+    st.caption(
+        f"{r.sku} · {r.category_name} · {SCOPE_LABEL.get(r.rule_scope, 'правило не найдено')}: "
+        f"цель {ui.fmt_pct(r.target_margin)}, минимум {ui.fmt_pct(r.min_margin)} · "
+        f"статус: **{ui.STATUS_LABEL[r.status]}** — {ui.STATUS_HELP[r.status]}"
     )
-    rec_price = (
-        ui.fmt_rub(r.recommended_price)
-        if r.status in ("PROPOSED", "APPROVED")
-        else ui.STATUS_LABEL[r.status]
+    if r.deviation in ("below_cost", "below_min", "data_error"):
+        st.error(f"Критично: {DEVIATIONS[r.deviation]}")
+    c = st.columns(5)
+    c[0].metric("2. Текущая цена", ui.fmt_rub(r.current_price), f"себестоимость {ui.fmt_rub(r.unit_cost, 2)}",
+                delta_color="off", delta_arrow="off")  # fmt: skip
+    c[1].metric("3. Рекомендуемая цена", ui.fmt_rub(r.recommended_price) if proposed else "—",
+                None if proposed else ui.STATUS_LABEL[r.status], delta_color="off", delta_arrow="off")  # fmt: skip
+    c[2].metric("4. Изменение", ui.fmt_rub(r.change_abs) if proposed else "—",
+                ui.fmt_pct(r.change_pct, signed=True) if proposed else None, delta_color="off", delta_arrow="off")  # fmt: skip
+    c[3].metric("5. Маржа сейчас", ui.fmt_pct(r.plan_margin), help=ui.HELP["plan_margin"])
+    c[4].metric(
+        "6. Маржа после изменения",
+        ui.fmt_pct(r.after_margin) if proposed else "—",
+        help=ui.HELP["after_margin"],
     )
-    c[2].metric("Рекомендация", rec_price)
-    c[3].metric(
-        "Правило",
-        SCOPE_LABEL.get(r.rule_scope, "—"),
-        f"мин. {ui.fmt_pct(r.min_margin)} · цель {ui.fmt_pct(r.target_margin)}",
-        delta_color="off",
-        delta_arrow="off",
+    d = r.details or {}
+    if r.status == "CONFLICT" and d.get("min_price") and d.get("limit_high"):
+        ui.box(
+            "<b>7. Почему нет допустимой цены.</b> Два ограничения правила несовместимы:<br>"
+            f"• минимальная маржа {ui.fmt_pct(r.min_margin)} требует цену <b>не ниже "
+            f"{ui.fmt_rub(Decimal(d['min_price']))}</b>;<br>"
+            f"• лимит изменения от текущих {ui.fmt_rub(r.current_price)} разрешает <b>не выше "
+            f"{ui.fmt_rub(Decimal(d['limit_high']))}</b>.<br>"
+            "Система не выбирает цену сама: нужна цена вручную или пересмотр правила.",
+            "warn",
+        )
+    else:
+        ui.box(f"<b>7. Почему.</b> {r.reason_text}", "crit" if r.status == "BLOCKED" else "")
+    risks = []
+    if r.deviation == "below_cost":
+        risks.append("Сейчас цена ниже себестоимости — каждая продажа убыточна.")
+    if r.deviation == "below_min" and not proposed:
+        risks.append(
+            f"Маржа {ui.fmt_pct(r.plan_margin)} ниже минимальной {ui.fmt_pct(r.min_margin)} — "
+            "пока цена не изменена, позиция теряет маржу."
+        )
+    if r.status == "PROPOSED":
+        risks.append("Рост цены может снизить продажи — реакция спроса не моделируется.")
+    if r.status == "PROPOSED" and r.after_margin is not None and r.target_margin is not None \
+            and r.after_margin < r.target_margin:  # fmt: skip
+        risks.append(
+            "Целевая маржа не достигается за один шаг из-за лимита — потребуется следующий пересмотр."
+        )
+    if r.status == "ON_HOLD":
+        risks.append("Изменение во время промоакции исказит её результат — поэтому отложено.")
+    if r.status == "BLOCKED":
+        risks.append("Расчёт недостоверен до исправления исходных данных.")
+    ui.box(
+        "<b>8. Ограничения и риски.</b><br>"
+        + "<br>".join(
+            "• " + x for x in (risks or ["Существенных рисков по данным расчёта не выявлено."])
+        ),
+        "warn",
+    )
+    decision = {"APPROVED": "согласовано", "REJECTED": "отклонено"}.get(r.status, "не принято")
+    ui.box(
+        f"<b>9. Статус решения:</b> {decision}.<br><small>Рекомендованная цена — расчёт системы; согласованная — "
+        "решение руководителя; применённая — цена в кассе, её система не меняет "
+        f"(сейчас {ui.fmt_rub(r.current_price)}).</small>"
     )
     ph = repo.price_history(conn, int(r.store_id), int(r.product_id))
     ch = repo.cost_history(conn, int(r.product_id))
@@ -332,11 +380,10 @@ def offer_card(r) -> None:
             name="Себестоимость",
             line={"color": ui.PALETTE["warn"], "width": 2.5},
         )
-    fig.update_layout(height=230, title="История цены и себестоимости", yaxis_title="₽")
+    fig.update_layout(height=230, title="История цены и себестоимости, ₽", yaxis_title=None)
     fig.update_yaxes(rangemode="tozero")
     fig.update_xaxes(tickformat="%d.%m", hoverformat="%d.%m.%Y")
     st.plotly_chart(fig, width="stretch")
-    st.markdown(f"**Почему:** {r.reason_text}")
     others = recs[(recs["product_id"] == r.product_id) & recs["current_price"].notna()][
         "current_price"
     ]
@@ -386,6 +433,7 @@ def offer_card(r) -> None:
 b = st.columns([2, 2, 2, 4])
 if b[0].button(
     "Открыть карточку",
+    type="primary",
     disabled=len(selected) != 1,
     width="stretch",
     help="Выберите одну строку таблицы",

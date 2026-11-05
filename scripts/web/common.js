@@ -24,13 +24,39 @@ const F = {
   dshort: iso => iso ? iso.slice(8, 10) + '.' + iso.slice(5, 7) : '',
 };
 const ratio = (a, b) => (b == null || b <= 0 || a == null) ? null : a / b;
-function deltaPill(cur, prev, {kind = 'rel', invert = false} = {}) {
+/* Изменение к базе сравнения. Цвет — по смыслу для бизнеса: invert — рост плох (списания), neutral — без оценки. */
+function deltaPill(cur, prev, {kind = 'rel', invert = false, neutral = false} = {}) {
   if (cur == null || prev == null) return '';
   const v = kind === 'rel' ? ratio(cur - prev, Math.abs(prev)) : cur - prev;
   if (v == null) return '';
   const good = invert ? v < 0 : v > 0;
-  const cls = Math.abs(v) < (kind === 'rel' ? 0.0005 : 0.0005) ? 'flat' : good ? 'up' : 'down';
-  return `<span class="delta ${cls}">${kind === 'rel' ? F.spct(v) : F.pp(v)}</span>`;
+  const cls = neutral || Math.abs(v) < 0.0005 ? 'flat' : good ? 'up' : 'down';
+  const word = cls === 'flat' ? '' : good ? 'лучше: ' : 'хуже: ';
+  return `<span class="delta ${cls}"><span class="sr">${word}</span>${kind === 'rel' ? F.spct(v) : F.pp(v)}</span>`;
+}
+/* Подсказка ⓘ: текст по наведению и по фокусу с клавиатуры */
+const tip = (text, right = false) => `<button type="button" class="tip ${right ? 'r' : ''}" data-tip="${esc(text)}" aria-label="${esc(text)}">i</button>`;
+const NA = '<span class="na">нет данных</span>';
+/* Сделать элемент кнопкой для мыши и клавиатуры */
+function clickable(el, fn) {
+  if (!el) return;
+  if (el.tagName !== 'BUTTON') { el.setAttribute('role', 'button'); el.tabIndex = 0; }
+  el.onclick = fn;
+  el.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(e); } };
+}
+/* Вкладки: <div class="tabs" id=…><button data-tab="a">…</button></div> + .tab#tab-a */
+function tabs(id, onChange) {
+  const box = document.getElementById(id);
+  const set = key => {
+    $$('button', box).forEach(b => { const on = b.dataset.tab === key; b.classList.toggle('on', on); b.setAttribute('aria-selected', on); });
+    $$('button', box).forEach(b => document.getElementById('tab-' + b.dataset.tab).classList.toggle('on', b.dataset.tab === key));
+    requestAnimationFrame(() => Charts.redrawAll());
+    if (onChange) onChange(key);
+  };
+  box.setAttribute('role', 'tablist');
+  $$('button', box).forEach(b => { b.setAttribute('role', 'tab'); b.onclick = () => set(b.dataset.tab); });
+  set($$('button', box)[0].dataset.tab);
+  return {set};
 }
 
 /* ---------- Тема и цвета ---------- */
@@ -126,7 +152,7 @@ const Nav = {
   },
   go(key, push = true) {
     $$('.view').forEach(v => v.classList.toggle('on', v.id === 'v-' + key));
-    $$('.nav[data-view]').forEach(b => b.classList.toggle('on', b.dataset.view === key));
+    $$('.nav[data-view]').forEach(b => { b.classList.toggle('on', b.dataset.view === key); b.toggleAttribute('aria-current', b.dataset.view === key); });
     if (push) history.replaceState(null, '', '#' + key);
     window.scrollTo({top: 0});
     requestAnimationFrame(() => Charts.redrawAll());
@@ -162,23 +188,30 @@ class Table {
     }
     return r;
   }
-  cell(v, t) { return t === 'html' ? (v ?? '') : t === 'text' ? esc(v) : F[t](v); }
+  cell(v, t, c = {}) {
+    if (v == null || v === '' || (typeof v === 'number' && isNaN(v))) return t === 'html' && v === '' ? '' : c.na ? `<span class="na">${c.na}</span>` : NA;
+    return t === 'html' ? v : t === 'text' ? esc(v) : F[t](v);
+  }
   render() {
     const rows = this.current(), num = t => !['text', 'html'].includes(t);
     $('thead', this.el).innerHTML = '<tr>' + this.cols.map(c =>
-      `<th class="${num(c.t) ? 'num' : ''}" data-k="${c.k}" style="${c.w ? 'min-width:' + c.w + 'px' : ''}">${c.label}${this.sortK === c.k ? (this.dir > 0 ? ' ▲' : ' ▼') : ''}</th>`).join('') + '</tr>';
+      `<th class="${num(c.t) ? 'num' : ''}" data-k="${c.k}" tabindex="0" aria-sort="${this.sortK === c.k ? (this.dir > 0 ? 'ascending' : 'descending') : 'none'}" style="${c.w ? 'min-width:' + c.w + 'px' : ''}">${c.label}${c.help ? tip(c.help, num(c.t)) : ''}${this.sortK === c.k ? (this.dir > 0 ? ' ▲' : ' ▼') : ''}</th>`).join('') + '</tr>';
     const start = this.p * this.page, slice = rows.slice(start, start + this.page);
-    $('tbody', this.el).innerHTML = slice.map((r, i) => `<tr class="${this.onRow ? 'click' : ''}" data-i="${start + i}">` +
-      this.cols.map(c => `<td class="${num(c.t) ? 'num' : ''}">${this.cell(r[c.k], c.t)}</td>`).join('') + '</tr>').join('')
+    $('tbody', this.el).innerHTML = slice.map((r, i) => `<tr class="${this.onRow ? 'click' : ''}" data-i="${start + i}" ${this.onRow ? 'tabindex="0"' : ''}>` +
+      this.cols.map(c => `<td class="${num(c.t) ? 'num' : ''}">${this.cell(typeof c.k === 'function' ? c.k(r) : r[c.k], c.t, c)}</td>`).join('') + '</tr>').join('')
       || `<tr><td colspan="${this.cols.length}" class="empty">${this.empty}</td></tr>`;
-    $$('th', this.el).forEach(th => th.onclick = () => {
+    const sortBy = th => {
       const k = th.dataset.k; if (this.sortK === k) this.dir = -this.dir; else { this.sortK = k; this.dir = -1; } this.render();
+    };
+    $$('th', this.el).forEach(th => {
+      th.onclick = e => { if (!e.target.closest('.tip')) sortBy(th); };
+      th.onkeydown = e => { if ((e.key === 'Enter' || e.key === ' ') && !e.target.closest('.tip')) { e.preventDefault(); sortBy(th); } };
     });
-    if (this.onRow) $$('tbody tr[data-i]', this.el).forEach(tr => tr.onclick = () => this.onRow(rows[+tr.dataset.i]));
+    if (this.onRow) $$('tbody tr[data-i]', this.el).forEach(tr => clickable(tr, () => this.onRow(rows[+tr.dataset.i])));
     const pages = Math.max(1, Math.ceil(rows.length / this.page));
     $('.tbl-foot', this.el).innerHTML = `<span>Строк: ${F.int(rows.length)} из ${F.int(this.rows.length)}</span>
-      <span class="pager"><button ${this.p === 0 ? 'disabled' : ''} data-p="-1">←</button> ${this.p + 1} / ${pages}
-      <button ${this.p >= pages - 1 ? 'disabled' : ''} data-p="1">→</button></span>`;
+      <span class="pager"><button ${this.p === 0 ? 'disabled' : ''} data-p="-1" aria-label="Предыдущая страница">←</button> ${this.p + 1} / ${pages}
+      <button ${this.p >= pages - 1 ? 'disabled' : ''} data-p="1" aria-label="Следующая страница">→</button></span>`;
     $$('[data-p]', this.el).forEach(b => b.onclick = () => { this.p += +b.dataset.p; this.render(); });
   }
   download() {
@@ -214,13 +247,23 @@ function chipGroup(el, items, {multi = false, value = null, onChange, allLabel =
 }
 
 /* ---------- Боковая панель деталей ---------- */
+/* Карточка открывается поверх списка; закрытие (×, фон, Esc) возвращает к тому же месту списка и фокусу. */
 const Drawer = {
+  back: null,
   open(html, after) {
+    if (!$('#drawer').classList.contains('open')) this.back = document.activeElement;
     $('#drawer-body').innerHTML = html;
     $('#drawer').classList.add('open'); $('#drawer-bg').classList.add('open');
+    $('#drawer').setAttribute('aria-hidden', 'false');
+    $('#drawer').scrollTop = 0;
+    setTimeout(() => $('#drawer .close').focus(), 50);
     if (after) requestAnimationFrame(after);
   },
-  close() { $('#drawer').classList.remove('open'); $('#drawer-bg').classList.remove('open'); },
+  close() {
+    $('#drawer').classList.remove('open'); $('#drawer-bg').classList.remove('open');
+    $('#drawer').setAttribute('aria-hidden', 'true');
+    if (this.back && this.back.focus) this.back.focus();
+  },
 };
 document.addEventListener('keydown', e => { if (e.key === 'Escape') Drawer.close(); });
 
@@ -229,5 +272,7 @@ function shell() {
   $('#drawer-bg').onclick = () => Drawer.close();
   $('#drawer .close').onclick = () => Drawer.close();
   $$('.theme-btn').forEach(b => b.onclick = () => setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'));
+  $('#drawer').setAttribute('role', 'dialog'); $('#drawer').setAttribute('aria-modal', 'true'); $('#drawer').setAttribute('aria-hidden', 'true');
   initTheme();
+  const ld = document.getElementById('loading'); if (ld) ld.remove();
 }

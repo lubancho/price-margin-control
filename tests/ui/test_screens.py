@@ -52,14 +52,29 @@ def test_overview_has_six_cards():
     at = run_view("overview", "Аналитик")
     labels = [m.label for m in at.metric]
     assert labels == [
+        "Валовая маржинальность",
         "Выручка",
         "Валовая прибыль",
-        "Маржинальность",
-        "Ниже мин. маржи",
-        "Предупреждения",
-        "Изменить цену",
+        "Предложено изменить цен",
+        "Нужно решение вручную",
+        "Проблемы данных",
     ]
-    assert all(m.value != "н/д" for m in at.metric)
+    assert all(m.value != "нет данных" for m in at.metric)
+
+
+def test_overview_shows_attention_block_and_priority_table():
+    at = run_view("overview", "Аналитик")
+    assert any("Что требует внимания" in m.value for m in at.markdown)
+    assert any("Критично" in m.value for m in at.markdown)
+    assert len(at.dataframe) >= 1
+
+
+def test_tables_show_no_data_instead_of_none():
+    at = run_view("prices", "Аналитик")
+    df = at.dataframe[0].value
+    assert not df.isna().any().any(), "пустые значения должны быть подписаны"
+    assert not (df.astype(str) == "None").any().any()
+    assert (df == "нет данных").any().any()  # у заблокированных позиций нет маржи — подписано
 
 
 def test_prices_buttons_depend_on_role():
