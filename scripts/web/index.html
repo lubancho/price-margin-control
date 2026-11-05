@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Контроль цен и маржинальности — демо</title>
+<meta name="description" content="Интерактивный демо-дашборд: выручка, маржа, рекомендуемые цены, предупреждения, сценарии. Синтетические данные.">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%234536a8'/%3E%3Ctext x='16' y='21' font-size='13' font-family='Arial' font-weight='700' fill='%23fff' text-anchor='middle'%3E%E2%82%BD%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="common.css">
+</head>
+<body>
+<div class="app">
+<aside>
+  <div class="brand"><div class="logo">ЦМ</div><div><div class="t">Контроль цен и&nbsp;маржи</div><div class="k">Демо · портфолио аналитика</div></div></div>
+  <button class="nav" data-view="overview"><span class="ic">1</span>Обзор</button>
+  <button class="nav" data-view="prices"><span class="ic">2</span>Анализ цен<span class="cnt" id="cnt-prices"></span></button>
+  <button class="nav" data-view="alerts"><span class="ic">3</span>Предупреждения<span class="cnt bad" id="cnt-alerts"></span></button>
+  <button class="nav" data-view="scenarios"><span class="ic">4</span>Сценарии</button>
+  <button class="nav" data-view="history"><span class="ic">5</span>История и правила</button>
+  <div class="side-foot">
+    <b>Канаева Любовь</b>
+    <span>Учебный проект бизнес-аналитика</span>
+    <a href="https://github.com/lubancho/price-margin-control" target="_blank" rel="noopener">Код и документация на GitHub →</a>
+    <span>Данные синтетические.</span>
+    <button class="theme-btn"><svg class="i" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg><span class="theme-label">Тёмная тема</span></button>
+  </div>
+</aside>
+
+<main>
+  <div class="filterbar" id="filterbar">
+    <div class="seg" id="f-period"></div>
+    <select class="sel" id="f-store"></select>
+    <div class="chips" id="f-cats"></div>
+    <span class="sp"></span>
+    <div class="chips" id="f-active"></div>
+  </div>
+
+  <!-- 1. Обзор -->
+  <section class="view" id="v-overview">
+    <div class="eyebrow"><span class="dot"></span>Демо · сеть суши-маркетов · 15 точек · 150 позиций</div>
+    <h1>Контроль цен и <em>маржинальности</em></h1>
+    <p class="lead">Где сеть теряет маржу, какие цены пора пересмотреть и почему. <b>Нажимайте на карточки, столбцы и сегменты</b> —
+      дашборд отфильтруется по точке или категории.</p>
+    <div class="rule"></div>
+    <div class="grid g-kpi" id="kpis"></div>
+    <div class="grid g-73 mt">
+      <div class="card"><div class="card-head"><h3>Выручка и маржинальность по дням</h3><span class="hint" id="trend-hint"></span></div><div class="chart tall" id="c-trend"></div></div>
+      <div class="card"><div class="card-head"><h3>Вклад категорий</h3><span class="hint">клик — фильтр</span></div><div class="chart tall" id="c-cats"></div></div>
+    </div>
+    <div class="grid g-2 mt">
+      <div class="card"><div class="card-head"><h3>Точки: валовая маржинальность</h3><span class="hint">клик по столбцу — фильтр по точке</span></div><div class="chart tall" id="c-stores"></div></div>
+      <div class="card"><div class="card-head"><h3>Что система предлагает сделать с ценами</h3><span class="hint">клик — открыть список</span></div><div class="chart tall" id="c-status"></div></div>
+    </div>
+  </section>
+
+  <!-- 2. Анализ цен -->
+  <section class="view" id="v-prices">
+    <div class="eyebrow"><span class="dot"></span><span id="prices-eyebrow"></span></div>
+    <h1>Анализ <em>цен</em></h1>
+    <p class="lead">Рекомендация по каждой паре «точка × товар» с объяснением. <b>Нажмите на строку</b> — откроется карточка с историей цены и себестоимости.</p>
+    <div class="rule"></div>
+    <div class="grid g-46">
+      <div class="card">
+        <div class="eyebrow"><span class="dot"></span>Статус рекомендации</div><div class="chips" id="p-status"></div>
+        <div class="eyebrow mt"><span class="dot warn"></span>Тип отклонения</div><div class="chips" id="p-dev"></div>
+      </div>
+      <div class="card"><div class="card-head"><h3>На сколько система предлагает изменить цены</h3><span class="hint">предложенные изменения, % к текущей цене</span></div><div class="chart short" id="c-hist"></div></div>
+    </div>
+    <div class="card mt"><div id="t-prices"></div></div>
+  </section>
+
+  <!-- 3. Предупреждения -->
+  <section class="view" id="v-alerts">
+    <div class="eyebrow"><span class="dot bad"></span>Мониторинг</div>
+    <h1>Предупреждения <em>и ошибки данных</em></h1>
+    <p class="lead">Повторный расчёт не создаёт дублей — растёт счётчик «повторов». <b>Нажмите на тип</b> в диаграмме, чтобы отфильтровать список.</p>
+    <div class="rule"></div>
+    <div class="grid g-kpi" id="a-kpis"></div>
+    <div class="grid g-46 mt">
+      <div class="card"><div class="card-head"><h3>Открытые по типам</h3></div><div class="chart tall" id="c-atypes"></div></div>
+      <div class="card"><div class="chips" id="a-type" style="margin-bottom:10px"></div><div id="t-alerts"></div></div>
+    </div>
+    <div class="card mt"><div class="card-head"><h3>Проверки качества исходных данных</h3><span class="hint">строки с ошибками не попадают в расчёты</span></div><div id="t-dq"></div></div>
+  </section>
+
+  <!-- 4. Сценарии -->
+  <section class="view" id="v-scenarios">
+    <div class="eyebrow"><span class="dot"></span>Что если</div>
+    <h1>Сценарии <em>цен и спроса</em></h1>
+    <p class="lead">Двигайте ползунки — рекомендации пересчитываются прямо в браузере по тому же алгоритму, что в системе:
+      целевая маржа → округление → минимальная маржа → лимит изменения → промо. <b>Это сценарий, а не прогноз.</b></p>
+    <div class="rule"></div>
+    <div class="grid g-46">
+      <div class="card">
+        <div class="eyebrow"><span class="dot"></span>Правило сети</div>
+        <div class="ctl" id="s-ctl"></div>
+      </div>
+      <div>
+        <div class="hero" id="s-hero"></div>
+        <div class="grid g-2 mt">
+          <div class="card"><div class="card-head"><h3>Статусы рекомендаций</h3></div><div class="chart" id="c-sstatus"></div></div>
+          <div class="card"><div class="card-head"><h3>Валовая прибыль по категориям, 28 дней</h3></div><div class="chart" id="c-scats"></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="card mt"><div class="card-head"><h3>Самые заметные изменения в сценарии</h3><span class="hint">клик — карточка предложения</span></div><div id="t-scen"></div></div>
+    <div class="callout warn mt" id="s-assume"></div>
+  </section>
+
+  <!-- 5. История -->
+  <section class="view" id="v-history">
+    <div class="eyebrow"><span class="dot"></span>Аудит</div>
+    <h1>История <em>и правила</em></h1>
+    <p class="lead">Журнал только дополняется: записи нельзя изменить или удалить. Использованные правила заблокированы — изменение создаёт новую версию.</p>
+    <div class="rule"></div>
+    <div class="grid g-2">
+      <div class="card"><div class="card-head"><h3>Действующие правила ценообразования</h3><span class="hint" id="rules-hint"></span></div><div id="t-rules"></div></div>
+      <div class="card"><div class="card-head"><h3>Запуски расчёта</h3></div><div id="t-runs"></div></div>
+    </div>
+    <div class="card mt"><div class="card-head"><h3>Журнал событий</h3></div><div id="t-events"></div></div>
+  </section>
+
+  <div class="foot" id="foot"></div>
+</main>
+</div>
+
+<div class="drawer-bg" id="drawer-bg"></div>
+<div class="drawer" id="drawer"><button class="close" aria-label="Закрыть">×</button><div id="drawer-body"></div></div>
+
+<script src="echarts.min.js"></script>
+<script src="data.js"></script>
+<script src="common.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
