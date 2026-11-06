@@ -108,7 +108,7 @@ pio.templates.default = "plotly_white+pmc"
 
 _CSS = """
 <style>
-.block-container {padding-top: 1.6rem; padding-bottom: 1rem; max-width: 1500px;}
+.block-container {padding-top: 4rem; padding-bottom: 1rem; max-width: 1500px;}
 h1 {letter-spacing: -0.02em;}
 [data-testid="stSidebar"] {background: #4536A8;}
 [data-testid="stSidebarNav"] span, [data-testid="stSidebar"] .stMarkdown p,
@@ -181,25 +181,29 @@ def footer() -> None:
     )
 
 
-def sidebar_role() -> str:
-    with st.sidebar:
-        role = st.selectbox("Роль", ROLES, key="role")
-        st.markdown(
-            "<div class='pmc-role'>⚠ Выбор роли только меняет набор кнопок и не является "
-            "защищённым разграничением доступа.</div>",
-            unsafe_allow_html=True,
+def role_bar() -> str:
+    """Роль — в верхней строке страницы: в боковой панели только разделы."""
+    c1, c2, c3 = st.columns([2, 2, 3], vertical_alignment="bottom")
+    role = c1.selectbox(
+        "Роль",
+        ROLES,
+        key="role",
+        help="Выбор роли только меняет набор кнопок и не является защищённым "
+        "разграничением доступа.",
+    )
+    if role == "Операционный менеджер":
+        stores = cached_stores()
+        c2.selectbox(
+            "Моя точка",
+            stores["store_id"],
+            key="my_store",
+            format_func=dict(zip(stores["store_id"], stores["name"], strict=True)).get,
         )
-        if role == "Операционный менеджер":
-            stores = cached_stores()
-            st.selectbox(
-                "Моя точка",
-                stores["store_id"],
-                key="my_store",
-                format_func=dict(zip(stores["store_id"], stores["name"], strict=True)).get,
-            )
-        period = cached_period()
-        if period:
-            st.caption(f"Данные: {period[0]:%d.%m.%Y} — {period[1]:%d.%m.%Y}")
+    period = cached_period()
+    note = "Роль меняет только набор кнопок — это не защита доступа."
+    if period:
+        note += f" Данные: {period[0]:%d.%m.%Y} — {period[1]:%d.%m.%Y}."
+    c3.caption(note)
     return role
 
 

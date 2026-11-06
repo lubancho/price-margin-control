@@ -123,7 +123,7 @@ if margin_dpp is not None and margin_dpp < 0:
     items.append(
         dict(lvl="warn", title="Маржа снизилась", value=ui.fmt_pp(margin_dpp),
              why=(f"У {jumps} позиций заметно выросла себестоимость — стоит проверить." if jumps
-                  else "Сравните точки на странице «Маржа и продажи»."),
+                  else "Сравните точки на странице «Где падает маржа»."),
              page="views/alerts.py"))  # fmt: skip
 
 # --- Главный показатель и вывод -------------------------------------------------------------------
@@ -183,7 +183,9 @@ else:
 ui.level(
     "Внимание",
     "Главные проблемы",
-    f"Показаны 3 из {len(items)} — остальные в разделе «Рекомендации»." if len(items) > 3 else None,
+    f"Показаны 3 из {len(items)} — остальные — на страницах «Цены к пересмотру» и «Ошибки в данных и правилах»."
+    if len(items) > 3
+    else None,
 )
 ui.attention(items[:3], "ov_attn")
 if run is not None and st.button(

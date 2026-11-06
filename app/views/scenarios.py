@@ -17,7 +17,7 @@ from pmc.rules import rule_from_row
 from pmc.run_service import compute_recommendations, create_rule_set
 
 ui.page_header(
-    "Что будет, если изменить цену?",
+    "Что будет, если изменить правило",
     "Расчёт «что если», а не прогноз. Правила не сохраняются, пока вы не нажмёте «Сохранить как новую "
     "версию»; цены в кассе не меняются.",
 )

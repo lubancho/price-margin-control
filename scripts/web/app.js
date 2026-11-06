@@ -123,7 +123,6 @@ function buildFilters() {
   cat.onchange = () => State.set({cat: cat.value === '' ? null : +cat.value});
 }
 const view = () => (location.hash || '#overview').slice(1) || 'overview';
-let anTab = 'margin', recsTab = 'prices';
 function syncFilters() {
   $$('#f-period button').forEach(b => { const on = +b.dataset.v === State.s.days; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); });
   $('#f-store').value = State.s.store ?? '';
@@ -136,15 +135,15 @@ function syncFilters() {
   $$('#f-active [data-x]').forEach(b => b.onclick = () => { const x = b.dataset.x; State.set(x === 'all' ? {store: null, cat: null} : {[x]: null}); });
   // На каждом экране видны только те фильтры, которые на нём действуют (на обзоре — не больше двух).
   const v = view(), show = (id, on) => { $(id).style.display = on ? '' : 'none'; };
-  show('#f-period', v === 'overview' || (v === 'analytics' && anTab === 'margin'));
+  show('#f-period', v === 'overview' || v === 'margin');
   show('#f-cat', v !== 'overview');
-  show('#filterbar', !(v === 'analytics' && anTab === 'method'));
+  show('#filterbar', v !== 'method');
 }
 
 /* ---------- 1. Обзор: главный показатель → вывод → проблемы → подробности по запросу ---------- */
 function goProblems(level = null, type = null) {
   aLevel = level; aType = type;
-  Nav.go('recs'); recsTabs.set('problems');
+  Nav.go('problems');
   if (type) $('#a-details').open = true;
   renderAlerts();
 }
@@ -163,8 +162,8 @@ function problemItems(rg, offers, m, mPrev, dm) {
     go: () => goPrices({status: ['CONFLICT']})});
   if (dm != null && dm < 0) {
     const jumps = ALERTS.filter(a => OPEN(a) && a.alert_code === 'COST_JUMP' && alertInScope(a)).length;
-    items.push({lvl: 'warn', t: `Маржа снизилась на ${F.num1(-dm * 100)} п. п. за ${n} дн.`, why: jumps ? `У ${jumps} позиций заметно выросла себестоимость — стоит проверить.` : 'Сравните точки на вкладке «Аналитика».',
-      go: () => jumps ? goProblems('warn', 'COST_JUMP') : (Nav.go('analytics'), anTabs.set('margin'))});
+    items.push({lvl: 'warn', t: `Маржа снизилась на ${F.num1(-dm * 100)} п. п. за ${n} дн.`, why: jumps ? `У ${jumps} позиций заметно выросла себестоимость — стоит проверить.` : 'Сравните точки на странице «Где падает маржа».',
+      go: () => jumps ? goProblems('warn', 'COST_JUMP') : Nav.go('margin')});
   }
   return items;
 }
@@ -243,6 +242,8 @@ function renderMargin() {
   }));
   const bySt = agg(...rg, (d, s) => s, {...State.s, store: null}), net = mg(agg(...rg, null, {...State.s, store: null}).get(0));
   const sts = STORES.map(s => ({...s, m: mg(bySt.get(s.i)), rev: bySt.get(s.i)?.rev})).filter(s => s.m != null).sort((a, b) => a.m - b.m);
+  const low = sts.filter(s => s.m < net);
+  $('#mg-verdict').innerHTML = sts.length ? `Ниже средней по сети (${F.pct(net)}) — <b>${low.length} из ${sts.length}</b> точек. Ниже всех — ${esc(sts[0].name)}: <b>${F.pct(sts[0].m)}</b>.` : 'Нет продаж за выбранный период.';
   Charts.set('c-stores', () => ({
     grid: {left: 8, right: 46, top: 8, bottom: 4, containLabel: true},
     tooltip: {trigger: 'axis', axisPointer: {type: 'shadow'}, formatter: ps => `${ps[0].name}<br>маржа <b>${NF1.format(ps[0].value)}%</b> (сеть ${F.pct(net)})<br>выручка ${F.rub(sts[ps[0].dataIndex].rev)}`},
@@ -273,7 +274,7 @@ let pStatus = ['PROPOSED'], pDev = [], tPrices, stChips, devChips;
 function goPrices({status = [], dev = []} = {}) {
   pStatus = status; pDev = dev; stChips.set(status); devChips.set(dev);
   if (dev.length) $('#p-dev').closest('details').open = true;
-  Nav.go('recs'); recsTabs.set('prices'); renderPrices();
+  Nav.go('prices'); renderPrices();
 }
 function initPrices() {
   stChips = chipGroup('p-status', [], {multi: true, allLabel: 'Все', value: pStatus, onChange: v => { pStatus = v; renderPrices(); }});
@@ -289,7 +290,7 @@ function initPrices() {
 }
 function renderPrices() {
   const scope = OFFERS.filter(inScope);
-  $('#recs-eyebrow').textContent = `Расчёт на ${F.date(D.meta.as_of)} · ${State.s.store != null ? STORES[State.s.store].name : 'все точки'} · ${State.s.cat != null ? CATS[State.s.cat].name : 'все категории'}`;
+  $$('.recs-eyebrow').forEach(el => el.textContent = `Расчёт на ${F.date(D.meta.as_of)} · ${State.s.store != null ? STORES[State.s.store].name : 'все точки'} · ${State.s.cat != null ? CATS[State.s.cat].name : 'все категории'}`);
   $('#asof').textContent = F.date(D.meta.as_of);
   stChips.update(STATUS_ORDER.map(s => ({v: s, label: STATUS[s].l, n: scope.filter(o => o.status === s).length,
     cls: s === 'BLOCKED' ? 'bad' : s === 'CONFLICT' ? 'warn' : s === 'NO_CHANGE' ? 'ok' : ''})));
@@ -606,24 +607,20 @@ function initHistory() {
 shell();
 buildFilters();
 initPrices(); initAlerts(); initScenarios(); initHistory();
-const recsTabs = tabs('recs-tabs', k => { recsTab = k; syncFilters(); });
-const anTabs = tabs('an-tabs', k => { anTab = k; syncFilters(); });
 $('#cnt-recs').textContent = F.int(OFFERS.filter(o => o.status === 'PROPOSED').length);
-$('#go-method').onclick = () => { Nav.go('analytics'); anTabs.set('method'); };
 $('#foot').innerHTML = `${esc(D.meta.note)} Статичная демо-версия: данные выгружены из базы проекта (расчёт на ${F.date(D.meta.as_of)}), собрано ${D.meta.built}.
-  Согласование рекомендаций и пересчёт по новым данным — в полной версии (запуск через Docker, см. README).`;
+  Согласование рекомендаций и пересчёт по новым данным — в полной версии (запуск через Docker, см. README).<br>Канаева Любовь · учебный проект бизнес-аналитика · <a href="https://github.com/lubancho/price-margin-control" target="_blank" rel="noopener">Код и документация на GitHub →</a>`;
 function renderAll() { syncFilters(); renderOverview(); renderPrices(); renderAlerts(); renderMargin(); renderScenarios(); }
 State.on(renderAll);
 const navGo = Nav.go.bind(Nav);
 Nav.go = (k, push) => { navGo(k, push); syncFilters(); };
-// Старые ссылки (#prices, #alerts, #scenarios, #history) ведут на нужную вкладку новой структуры.
-const ALIAS = {prices: ['recs', 'prices'], alerts: ['recs', 'problems'], scenarios: ['analytics', 'scenarios'], history: ['analytics', 'method']};
+// Старые ссылки (#recs, #alerts, #analytics, #history) ведут на нужную страницу новой структуры.
+const ALIAS = {recs: 'prices', alerts: 'problems', analytics: 'margin', history: 'method'};
 Nav.fromHash = function () {
   const k = (location.hash || '').slice(1);
   if (ALIAS[k]) {
-    const [v, t] = ALIAS[k];
-    history.replaceState(null, '', '#' + v);
-    Nav.go(v, false); (v === 'recs' ? recsTabs : anTabs).set(t);
+    history.replaceState(null, '', '#' + ALIAS[k]);
+    Nav.go(ALIAS[k], false);
     return;
   }
   Nav.go(document.getElementById('v-' + k) ? k : 'overview', false);

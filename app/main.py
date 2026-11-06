@@ -4,28 +4,30 @@ import streamlit as st
 
 st.set_page_config(page_title="Контроль цен и маржинальности", page_icon="📊", layout="wide")
 
-from components.ui import sidebar_role  # noqa: E402 — set_page_config должен быть первым вызовом
+from components.ui import role_bar  # noqa: E402 — set_page_config должен быть первым вызовом
 
-# Три основных направления; технические страницы — внутри «Аналитики».
+# Одна страница — один вопрос. Боковая панель: «Главное», «Что сделать», «Разбор» и «Справка»;
+# технические материалы — только в «Справке».
 pages = {
-    "Обзор": [
-        st.Page("views/overview.py", title="Обзор", icon=":material/dashboard:", default=True),
+    "Главное": [
+        st.Page("views/overview.py", title="Обзор", icon=":material/home:", default=True),
     ],
-    "Рекомендации": [
-        st.Page("views/prices.py", title="Цены к пересмотру", icon=":material/price_change:"),
-        st.Page("views/alerts.py", title="Проблемы и ошибки", icon=":material/warning:"),
+    "Что сделать": [
+        st.Page("views/prices.py", title="Цены к пересмотру", icon=":material/sell:"),
+        st.Page("views/alerts.py", title="Ошибки в данных и правилах", icon=":material/warning:"),
     ],
-    "Аналитика": [
-        st.Page("views/margin.py", title="Маржа и продажи", icon=":material/monitoring:"),
+    "Разбор": [
+        st.Page("views/margin.py", title="Где падает маржа", icon=":material/bar_chart:"),
+        st.Page("views/scenarios.py", title="Что если изменить правило", icon=":material/tune:"),
+    ],
+    "Справка": [
         st.Page(
-            "views/scenarios.py", title="Что будет, если изменить цену?", icon=":material/tune:"
+            "views/history.py", title="Методика, правила и история", icon=":material/menu_book:"
         ),
-        st.Page("views/history.py", title="Методика и история", icon=":material/menu_book:"),
         st.Page("views/export.py", title="Экспорт", icon=":material/download:"),
     ],
 }
 nav = st.navigation(pages)
-with st.sidebar:
-    st.markdown("**Контроль цен и маржинальности**  \nдемо-версия на синтетических данных")
-sidebar_role()
+# Боковая панель — только разделы; роль выбирается в верхней строке.
+role_bar()
 nav.run()
