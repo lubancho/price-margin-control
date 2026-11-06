@@ -5,15 +5,13 @@ from __future__ import annotations
 from datetime import timedelta
 
 import pandas as pd
-import plotly.graph_objects as go
 import streamlit as st
 from components import ui
 
 from pmc import metrics
 from pmc import repository as repo
-from pmc.pricing import margin
 
-ui.page_header("Обзор: цены и маржа")
+ui.page_header("Сводка")
 
 c1, c2 = st.columns([2, 3])
 with c1:
@@ -78,144 +76,47 @@ margin_dpp = (
     else None
 )
 where = "выбранных точек" if store_ids else "сети"
-need_decision = conflicts + blocked
-df = recs.copy()
-if not df.empty:
-    df["plan_margin"] = [
-        margin(p, c)
-        if c is not None and not pd.isna(c) and c > 0 and p is not None and not pd.isna(p)
-        else None
-        for p, c in zip(df["current_price"], df["unit_cost"], strict=True)
-    ]
-    df["below_cost"] = [
-        bool(p is not None and c is not None and not pd.isna(p) and not pd.isna(c) and p < c)
-        for p, c in zip(df["current_price"], df["unit_cost"], strict=True)
-    ]
-    df["below_min"] = [
-        bool(not bc and pm is not None and mm is not None and pm < mm)
-        for bc, pm, mm in zip(df["below_cost"], df["plan_margin"], df["min_margin"], strict=True)
-    ]
+crit = int((alerts["severity"] == "CRIT").sum()) if not alerts.empty else 0
 
-# Проблемы по убыванию важности: деньги → достоверность расчёта → решения → динамика.
-items = []
-if not df.empty and df["below_cost"].any():
-    items.append(
-        dict(lvl="crit", title="Цена ниже себестоимости", value=f"{int(df['below_cost'].sum())} позиций",
-             why="Каждая продажа этих позиций убыточна.",
-             page="views/prices.py", state={"pr_preset_dev": ["below_cost"]}))  # fmt: skip
-if not df.empty and df["below_min"].any():
-    items.append(
-        dict(lvl="crit", title="Маржа ниже минимальной", value=f"{int(df['below_min'].sum())} позиций",
-             why="По большинству система уже предложила новую цену.",
-             page="views/prices.py", state={"pr_preset_dev": ["below_min"]}))  # fmt: skip
-if blocked:
-    items.append(
-        dict(lvl="crit", title="Цена не рассчитана из-за ошибок в данных", value=f"{blocked} позиций",
-             why="Сначала нужно исправить себестоимость или цену в учётной системе.",
-             page="views/prices.py", state={"pr_preset_status": ["BLOCKED"]}))  # fmt: skip
-if conflicts:
-    items.append(
-        dict(lvl="warn", title="Нужно решение руководителя", value=f"{conflicts} позиций",
-             why="Правила противоречат друг другу: система не может выбрать цену сама.",
-             page="views/prices.py", state={"pr_preset_status": ["CONFLICT"]}))  # fmt: skip
-if margin_dpp is not None and margin_dpp < 0:
-    jumps = int((alerts["alert_code"] == "COST_JUMP").sum()) if not alerts.empty else 0
-    items.append(
-        dict(lvl="warn", title="Маржа снизилась", value=ui.fmt_pp(margin_dpp),
-             why=(f"У {jumps} позиций заметно выросла себестоимость — стоит проверить." if jumps
-                  else "Сравните точки на странице «Где падает маржа»."),
-             page="views/alerts.py"))  # fmt: skip
-
-# --- Главный показатель и вывод -------------------------------------------------------------------
-verdict = f"### Маржа {where} — {ui.fmt_pct(m.gross_margin)}"
-st.markdown(verdict)
-sub = []
+# --- Уровень 1: одна фраза и четыре «двери» в разбор -------------------------------------------
+sub = f"Маржа {where} — {ui.fmt_pct(m.gross_margin)}"
 if margin_dpp is not None:
-    sub.append(
-        f"Это на {ui.fmt_num(abs(margin_dpp) * 100)} п. п. {'выше' if margin_dpp >= 0 else 'ниже'}, "
-        f"чем в прошлые {days} дн."
+    sub += (
+        f": на {ui.fmt_num(abs(margin_dpp) * 100)} п. п. "
+        f"{'выше' if margin_dpp >= 0 else 'ниже'}, чем в прошлые {days} дн."
     )
-if items:
-    sub.append(f"Главное сейчас: {items[0]['title'].lower()} — {items[0]['value']}.")
-if sub:
-    st.markdown(" ".join(sub))
+st.markdown(f"### {sub}")
 
-NOTE = "к прошлому"
 k = st.columns(4)
-k[0].metric(
-    "Маржа",
-    ui.fmt_pct(m.gross_margin),
-    ui.fmt_pp(margin_dpp) if margin_dpp is not None else None,
-    delta_description=NOTE,
+ui.door(
+    k[0], "Маржа", ui.fmt_pct(m.gross_margin),
+    delta=ui.fmt_pp(margin_dpp) if margin_dpp is not None else None,
+    note=f"валовая прибыль {ui.fmt_rub(m.gross_profit)}",
+    action="Где ниже", page="views/margin.py", key="door_margin",
     help=ui.HELP["margin"] + f" Покрытие себестоимостью: {ui.fmt_pct(m.cost_coverage)} выручки.",
-)
-k[1].metric(
-    "Валовая прибыль",
-    ui.fmt_rub(m.gross_profit),
-    delta(m.gross_profit, mp.gross_profit if mp else None),
-    delta_description=NOTE,
-    help=ui.HELP["gp"],
-)
+)  # fmt: skip
 if run is not None:
-    k[2].metric(
-        "Цен к пересмотру",
-        ui.fmt_int(proposed),
-        f"расчёт на {run['as_of_date']:%d.%m.%Y}",
-        delta_color="off",
-        delta_arrow="off",
+    ui.door(
+        k[1], "Цены к пересмотру", ui.fmt_int(proposed),
+        note=f"расчёт на {run['as_of_date']:%d.%m.%Y}", action="Открыть список",
+        page="views/prices.py", state={"pr_preset_status": ["PROPOSED"]}, key="door_prices",
         help=ui.HELP["proposed"],
-    )
-    k[3].metric(
-        "Ждут решения",
-        ui.fmt_int(need_decision),
-        "конфликты и ошибки",
-        delta_color="off",
-        delta_arrow="off",
-        help=ui.HELP["conflict"] + " " + ui.HELP["dq"],
-    )
+    )  # fmt: skip
+    ui.door(
+        k[2], "Нужно решение", ui.fmt_int(conflicts), note="правила противоречат друг другу",
+        action="Решить", page="views/prices.py", state={"pr_preset_status": ["CONFLICT"]},
+        key="door_conflict", help=ui.HELP["conflict"],
+    )  # fmt: skip
+    ui.door(
+        k[3], "Ошибки и нарушения", ui.fmt_int(crit),
+        note=f"критичных · цена не рассчитана: {ui.fmt_int(blocked)}", action="Разобрать",
+        page="views/alerts.py", key="door_alerts", help=ui.HELP["dq"],
+    )  # fmt: skip
 else:
-    k[2].metric(
-        "Цен к пересмотру", ui.NA, "расчёт не выполнялся", delta_color="off", delta_arrow="off"
-    )
-    k[3].metric("Ждут решения", ui.NA, "расчёт не выполнялся", delta_color="off", delta_arrow="off")
-
-# --- Не больше трёх главных проблем ---------------------------------------------------------------
-ui.level(
-    "Внимание",
-    "Главные проблемы",
-    f"Показаны 3 из {len(items)} — остальные — на страницах «Цены к пересмотру» и «Ошибки в данных и правилах»."
-    if len(items) > 3
-    else None,
-)
-ui.attention(items[:3], "ov_attn")
-if run is not None and st.button(
-    f"Пересмотреть цены: {ui.fmt_int(proposed)} предложений →", type="primary"
-):
-    st.session_state["pr_preset_status"] = ["PROPOSED"]
-    st.switch_page("views/prices.py")
-
-# --- Один график ---------------------------------------------------------------------------------
-daily = ui.to_display(load(d0, d1, store_ids, "day"))
-fig = go.Figure()
-fig.add_scatter(
-    x=daily["sale_date"],
-    y=daily["gross_margin"] * 100,
-    name="Маржа за день",
-    line={"color": ui.PALETTE["accent"], "width": 3},
-)
-if run is not None and not recs.empty:
-    min_m = recs.loc[recs["rule_scope"] == "global", "min_margin"]
-    if len(min_m):
-        fig.add_hline(
-            y=float(min_m.iloc[0]) * 100,
-            line_dash="dash",
-            line_color=ui.PALETTE["crit"],
-            annotation_text="минимум по правилу",
-            annotation_position="bottom right",
-        )
-fig.update_layout(title="Маржа по дням, %", height=300, yaxis_ticksuffix="%", showlegend=False)
-fig.update_xaxes(tickformat="%d.%m", hoverformat="%d.%m.%Y")
-st.plotly_chart(fig, width="stretch")
+    for c, label in zip(
+        k[1:], ["Цены к пересмотру", "Нужно решение", "Ошибки и нарушения"], strict=True
+    ):
+        ui.door(c, label, ui.NA, note="расчёт не выполнялся", key=f"door_{label}")
 if m.lines_no_cost:
     st.caption(
         f"Строк продаж без себестоимости на дату продажи: {m.lines_no_cost}. Они учтены в выручке, "

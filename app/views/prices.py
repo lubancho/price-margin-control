@@ -15,8 +15,9 @@ from pmc.alerts import TITLES
 from pmc.pricing import margin
 from pmc.run_service import RunError, decide, start_run
 
+ui.crumbs(("Сводка", "views/overview.py"), ("Цены к пересмотру", None))
 ui.page_header(
-    "Какие цены пересмотреть",
+    "Цены к пересмотру",
     "Для каждой пары «точка × товар» система рассчитала цену по правилам маржи. Выберите строку и "
     "откройте карточку — там объяснено, почему такая цена. Система не меняет цены в кассе: "
     "согласование только фиксирует решение.",
@@ -105,11 +106,14 @@ f = st.columns([2.6, 2, 2, 2, 2, 1.8])
 with f[0]:
     d0, d1 = ui.period_filter("pr_period")
 with f[1]:
-    default = [ui.my_store()] if ui.my_store() else []
+    if "pr_preset_store" in st.session_state:  # переход со страницы точки
+        st.session_state["pr_store"] = st.session_state.pop("pr_preset_store")
+    default = None if "pr_store" in st.session_state else ([ui.my_store()] if ui.my_store() else [])
     f_store = st.multiselect(
         "Точка",
         stores["store_id"],
         default=default,
+        key="pr_store",
         placeholder="Все",
         format_func=dict(zip(stores["store_id"], stores["name"], strict=True)).get,
     )

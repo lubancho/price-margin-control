@@ -8,8 +8,9 @@ from components import ui
 from pmc import repository as repo
 from pmc.db import fetch_df
 
+ui.crumbs(("Сводка", "views/overview.py"), ("Справка", None))
 ui.page_header(
-    "Как считается цена",
+    "Справка",
     "Алгоритм, показатели и ограничения; запуски, журнал и версии правил — в блоках «Подробнее». "
     "Журнал только дополняется: записи нельзя изменить или удалить.",
 )
@@ -167,4 +168,5 @@ with t4:
             width="stretch",
             column_config={"Время": st.column_config.DatetimeColumn(format="DD.MM.YYYY HH:mm")},
         )
+ui.link("views/export.py", "Экспорт данных в CSV и Excel ›")
 ui.footer()

@@ -12,6 +12,7 @@ from pmc import metrics
 from pmc import repository as repo
 from pmc.export import to_csv_bytes, to_xlsx_bytes
 
+ui.crumbs(("Сводка", "views/overview.py"), ("Справка", "views/history.py"), ("Экспорт", None))
 ui.page_header(
     "Экспорт",
     "Числа выгружаются числами, даты — датами. В каждом файле есть пометка о синтетических данных.",

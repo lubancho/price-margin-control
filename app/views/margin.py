@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
@@ -9,9 +10,11 @@ from components import ui
 
 from pmc import metrics
 from pmc import repository as repo
+from pmc.pricing import margin
 
+ui.crumbs(("Сводка", "views/overview.py"), ("Маржа по точкам", None))
 ui.page_header(
-    "Где падает маржа",
+    "Маржа по точкам",
     "Точки с маржой ниже средней по сети выделены оранжевым. Динамика по дням — в «Подробнее».",
 )
 
@@ -53,6 +56,42 @@ fig.update_layout(
     yaxis_title=None,
 )
 st.plotly_chart(fig, width="stretch")
+# --- Уровень 3: одна точка — какие цены система предлагает изменить ---------------------------
+names = dict(zip(bs["store_id"], bs["store_name"], strict=True)) if len(bs) else {}
+if names:
+    si = st.selectbox("Открыть точку", list(names), format_func=names.get, key="mg_store")
+    run = repo.last_done_run(ui.get_conn())
+    recs = repo.recommendations(ui.get_conn(), run["run_id"]) if run is not None else pd.DataFrame()
+    if not recs.empty:
+        r = recs[(recs["store_id"] == si) & (recs["status"] != "NO_CHANGE")].copy()
+        r["m_now"] = [
+            margin(p, c) if c and p and not pd.isna(c) and not pd.isna(p) and c > 0 else None
+            for p, c in zip(r["current_price"], r["unit_cost"], strict=True)
+        ]
+        r["m_after"] = [
+            margin(p, c) if s == "PROPOSED" and c and p and not pd.isna(p) else None
+            for p, c, s in zip(r["recommended_price"], r["unit_cost"], r["status"], strict=True)
+        ]
+        r["_o"] = r["status"].map({"PROPOSED": 0, "CONFLICT": 1, "BLOCKED": 2, "ON_HOLD": 3})
+        r = r.sort_values(["_o", "m_now"], na_position="last")
+        show = pd.DataFrame(
+            {
+                "Товар": r["product_name"],
+                "Маржа сейчас": r["m_now"],
+                "Маржа после": r["m_after"],
+                "Новая цена, ₽": r["recommended_price"].where(r["status"] == "PROPOSED"),
+                "Статус": r["status"].map(ui.STATUS_LABEL),
+            }
+        ).head(8)
+        fmts = {"Маржа сейчас": "pct", "Маржа после": "pct", "Новая цена, ₽": "rub"}
+        st.dataframe(
+            ui.styled(show, fmts), hide_index=True, width="stretch", column_config=ui.num_cfg(fmts)
+        )
+        if st.button(f"Все цены точки ({len(r)}) ›", type="primary"):
+            st.session_state["pr_preset_store"] = [si]
+            st.session_state["pr_preset_status"] = []
+            st.switch_page("views/prices.py")
+ui.link("views/scenarios.py", "Что если изменить правило ›")
 with st.expander("Подробнее: выручка и маржинальность по дням"):
     stores = ui.cached_stores()
     sel = st.multiselect(

@@ -48,21 +48,19 @@ def test_view_renders_without_errors(view, role):
     )
 
 
-def test_overview_has_four_cards():
+def test_overview_has_four_doors():
+    """Сводка — четыре плитки-«двери», каждая ведёт в разбор показателя."""
     at = run_view("overview", "Аналитик")
     labels = [m.label for m in at.metric]
-    assert labels == ["Маржа", "Валовая прибыль", "Цен к пересмотру", "Ждут решения"]
+    assert labels == ["Маржа", "Цены к пересмотру", "Нужно решение", "Ошибки и нарушения"]
     assert all(m.value != "нет данных" for m in at.metric)
+    assert len(at.button) == 4, "у каждой плитки — переход на следующий уровень"
 
 
 def test_overview_first_level_is_short():
     at = run_view("overview", "Аналитик")
-    text = [m.value for m in at.markdown]
-    assert any("Главные проблемы" in t for t in text)
-    assert sum("class='ux-attn'" in t for t in text) <= 3, (
-        "на первом уровне — не больше трёх проблем"
-    )
-    assert len(at.get("plotly_chart")) <= 1, "на главной — не больше одного графика"
+    assert len(at.get("plotly_chart")) == 0, "на сводке нет графиков — только плитки"
+    assert len(at.dataframe) == 0, "на сводке нет таблиц"
 
 
 def test_tables_show_no_data_instead_of_none():

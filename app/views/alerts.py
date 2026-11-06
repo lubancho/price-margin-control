@@ -10,8 +10,9 @@ from pmc import repository as repo
 from pmc.alerts import TITLES
 from pmc.run_service import set_alert_status
 
+ui.crumbs(("Сводка", "views/overview.py"), ("Ошибки в данных и правилах", None))
 ui.page_header(
-    "Что мешает расчёту",
+    "Ошибки в данных и правилах",
     "Ошибки в исходных данных и нарушения правил: сначала то, из-за чего расчёт недостоверен. "
     "Повторное обнаружение той же проблемы не создаёт дубль: растёт счётчик «повторов».",
 )

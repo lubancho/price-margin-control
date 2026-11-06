@@ -27,7 +27,11 @@ pages = {
         st.Page("views/export.py", title="Экспорт", icon=":material/download:"),
     ],
 }
-nav = st.navigation(pages)
-# Боковая панель — только разделы; роль выбирается в верхней строке.
-role_bar()
+nav = st.navigation(pages, position="hidden")  # меню нет: переходы — со сводки вглубь
+# Верхняя строка: название (переход на сводку), выбор роли и «Справка».
+top = st.columns([2.2, 6, 1], vertical_alignment="center")
+top[0].page_link("views/overview.py", label="**Цены и маржа**", icon=":material/home:")
+with top[1]:
+    role_bar()
+top[2].page_link("views/history.py", label="Справка")
 nav.run()

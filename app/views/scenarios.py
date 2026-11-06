@@ -16,8 +16,13 @@ from pmc.pricing import RoundingMode
 from pmc.rules import rule_from_row
 from pmc.run_service import compute_recommendations, create_rule_set
 
+ui.crumbs(
+    ("Сводка", "views/overview.py"),
+    ("Маржа по точкам", "views/margin.py"),
+    ("Что если изменить правило", None),
+)
 ui.page_header(
-    "Что будет, если изменить правило",
+    "Что если изменить правило",
     "Расчёт «что если», а не прогноз. Правила не сохраняются, пока вы не нажмёте «Сохранить как новую "
     "версию»; цены в кассе не меняются.",
 )
