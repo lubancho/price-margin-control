@@ -167,7 +167,7 @@ UX/UI-ревью и редизайн двух учебных аналитиче�
 | Streamlit · таблица цен | ![до](ux/before_streamlit_prices.jpg) | ![после](ux/after_streamlit_prices.jpg) |
 | Streamlit · карточка | ![до](ux/before_streamlit_card.jpg) | ![после](ux/after_streamlit_card.jpg) |
 
-Дополнительно «после»: [таблица цен](ux/after_demo_prices.jpg), [«Что будет, если изменить цены?»](ux/after_demo_scenarios.jpg), [телефон 390 px](ux/after_demo_mobile.jpg). Текущие скриншоты полной версии — `docs/screenshots/`.
+Дополнительно «после»: [таблица цен](ux/after_demo_prices.jpg), [«Что будет, если изменить цены?»](ux/after_demo_scenarios.jpg), [телефон 390 px](ux/after_demo_mobile.jpg). Текущие скриншоты (после корректировки, раздел 9) — `docs/ux/v2/`.
 ## 7. Проверка функциональности и расчётов
 
 Все проверки выполнены 05.11.2026 локально (Python 3.12, PostgreSQL 16, Chromium через Playwright).
