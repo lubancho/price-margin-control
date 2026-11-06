@@ -62,6 +62,8 @@ const pctAx = v => NF0.format(v) + '%';
 const sum = (a, f) => a.reduce((s, x) => s + f(x), 0);
 
 OFFERS.forEach(o => {
+  o.reason_short = (o.reason_text || '').split(';')[0];
+  o.item_h = `${esc(o.product_name)}<div class="hint">${esc(STORES[o.si].short)}</div>`;  // первая часть объяснения; целиком — в карточке
   o.store = STORES[o.si].name; o.cat = CATS[o.ci].name;
   o.dev = devOf(o);
   o.status_h = pill(o.status);
@@ -70,6 +72,8 @@ OFFERS.forEach(o => {
   o.chg_abs = proposed ? o.change_abs : null;
   o.chg_pct = proposed ? o.change_pct : null;
   o.m_after = proposed && o.unit_cost != null ? (o.recommended_price - o.unit_cost) / o.recommended_price : null;
+  o.chg_h = proposed ? `${o.change_abs >= 0 ? '+' : '−'}${F.rub(Math.abs(o.change_abs))}<br><span class="hint">${F.spct(o.change_pct)}</span>` : '—';
+  o.mg_h = o.plan_margin == null ? NA : proposed ? `${F.pct(o.plan_margin)} → <b>${F.pct(o.m_after)}</b>` : F.pct(o.plan_margin);
   o.prio = DEV_ORDER.indexOf(o.dev) * 10 + STATUS_ORDER.indexOf(o.status);
 });
 function devOf(o) {
@@ -80,6 +84,7 @@ function devOf(o) {
   if (o.network_median && Math.abs(o.current_price - o.network_median) / o.network_median > 0.15) return 'network';
   return 'none';
 }
+const poz = n => `${F.int(n)} ${n % 10 === 1 && n % 100 !== 11 ? 'позиция' : [2, 3, 4].includes(n % 10) && ![12, 13, 14].includes(n % 100) ? 'позиции' : 'позиций'}`;
 const naText = o => ({BLOCKED: 'не рассчитано', CONFLICT: 'нужно решение', ON_HOLD: 'отложено', NO_CHANGE: 'без изменений'}[o.status] || 'нет данных');
 
 /* ---------- Агрегация продаж ---------- */
@@ -105,43 +110,63 @@ State.s = {days: 28, store: null, cat: null};
 const range = () => [Math.max(0, LAST - State.s.days + 1), LAST];
 function prevRange() { const [f, t] = range(), n = t - f + 1; return f - n < 0 ? null : [f - n, f - 1]; }
 const periodText = ([f, t] = range()) => `${F.date(DAYS[f])} — ${F.date(DAYS[t])}`;
-let catChips;
 function buildFilters() {
   const per = $('#f-period');
-  per.innerHTML = [[7, '7 дней'], [28, '28 дней'], [DAYS.length, `Весь период (${DAYS.length} дн.)`]].map(([v, l]) =>
+  per.innerHTML = [[7, '7 дней'], [28, '28 дней'], [DAYS.length, `${DAYS.length} дней`]].map(([v, l]) =>
     `<button data-v="${v}" aria-pressed="false">${l}</button>`).join('');
   $$('button', per).forEach(b => b.onclick = () => State.set({days: +b.dataset.v}));
   const sel = $('#f-store');
   sel.innerHTML = '<option value="">Все точки</option>' + STORES.map(s => `<option value="${s.i}">${esc(s.name)}</option>`).join('');
   sel.onchange = () => State.set({store: sel.value === '' ? null : +sel.value});
-  catChips = chipGroup('f-cats', CATS.map(c => ({v: c.i, label: c.name})), {allLabel: 'Все категории', value: null, onChange: v => State.set({cat: v})});
+  const cat = $('#f-cat');
+  cat.innerHTML = '<option value="">Все категории</option>' + CATS.map(c => `<option value="${c.i}">${esc(c.name)}</option>`).join('');
+  cat.onchange = () => State.set({cat: cat.value === '' ? null : +cat.value});
 }
 const view = () => (location.hash || '#overview').slice(1) || 'overview';
+let anTab = 'margin', recsTab = 'prices';
 function syncFilters() {
   $$('#f-period button').forEach(b => { const on = +b.dataset.v === State.s.days; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); });
   $('#f-store').value = State.s.store ?? '';
-  catChips.set(State.s.cat);
+  $('#f-cat').value = State.s.cat ?? '';
   const act = [];
   if (State.s.store != null) act.push(`<button class="chip af" data-x="store" aria-label="Снять фильтр: ${esc(STORES[State.s.store].name)}">${esc(STORES[State.s.store].name)} <span aria-hidden="true">×</span></button>`);
   if (State.s.cat != null) act.push(`<button class="chip af" data-x="cat" aria-label="Снять фильтр: ${esc(CATS[State.s.cat].name)}">${esc(CATS[State.s.cat].name)} <span aria-hidden="true">×</span></button>`);
-  if (act.length) act.push('<button class="link" data-x="all">Сбросить фильтры</button>');
+  if (act.length) act.push('<button class="link" data-x="all">Сбросить</button>');
   $('#f-active').innerHTML = act.join('');
   $$('#f-active [data-x]').forEach(b => b.onclick = () => { const x = b.dataset.x; State.set(x === 'all' ? {store: null, cat: null} : {[x]: null}); });
-  const v = view();
-  $('#f-period').style.display = v === 'overview' ? '' : 'none';
-  $('#filterbar').style.display = v === 'history' ? 'none' : '';
+  // На каждом экране видны только те фильтры, которые на нём действуют (на обзоре — не больше двух).
+  const v = view(), show = (id, on) => { $(id).style.display = on ? '' : 'none'; };
+  show('#f-period', v === 'overview' || (v === 'analytics' && anTab === 'margin'));
+  show('#f-cat', v !== 'overview');
+  show('#filterbar', !(v === 'analytics' && anTab === 'method'));
 }
 
-/* ---------- 1. Главная ---------- */
-let tPrio;
-function initOverview() {
-  tPrio = new Table('t-prio', {
-    cols: [{k: 'product_name', label: 'Товар', t: 'text', w: 160}, {k: 'store', label: 'Точка', t: 'text'},
-      {k: 'current_price', label: 'Цена сейчас', t: 'rub'}, {k: 'plan_margin', label: 'Маржа сейчас', t: 'pct', help: HELP.planMargin},
-      {k: 'dev_h', label: 'Проблема', t: 'html'}, {k: 'status_h', label: 'Что предлагает система', t: 'html'},
-      {k: 'rec_show', label: 'Новая цена', t: 'rub', na: '—'}],
-    rows: [], page: 8, onRow: offerCard, empty: 'Проблемных позиций нет',
-  });
+/* ---------- 1. Обзор: главный показатель → вывод → проблемы → подробности по запросу ---------- */
+function goProblems(level = null, type = null) {
+  aLevel = level; aType = type;
+  Nav.go('recs'); recsTabs.set('problems');
+  if (type) $('#a-details').open = true;
+  renderAlerts();
+}
+function problemItems(rg, offers, m, mPrev, dm) {
+  // только факты из расчёта; порядок — по влиянию на достоверность и деньги
+  const n = rg[1] - rg[0] + 1, cnt = s => offers.filter(o => o.status === s).length, devCnt = k => offers.filter(o => o.dev === k).length;
+  const blocked = cnt('BLOCKED'), conflicts = cnt('CONFLICT');
+  const items = [];
+  if (devCnt('below_cost')) items.push({lvl: 'crit', t: `Цена ниже себестоимости: ${poz(devCnt('below_cost'))}`, why: 'Каждая продажа этих позиций убыточна.',
+    go: () => goPrices({dev: ['below_cost']})});
+  if (devCnt('below_min')) items.push({lvl: 'crit', t: `Маржа ниже минимальной: ${poz(devCnt('below_min'))}`, why: 'По большинству система уже предложила новую цену.',
+    go: () => goPrices({dev: ['below_min']})});
+  if (blocked) items.push({lvl: 'crit', t: `Цена не рассчитана из-за ошибок в данных: ${poz(blocked)}`, why: 'Сначала нужно исправить себестоимость или цену в учётной системе.',
+    go: () => goPrices({status: ['BLOCKED']})});
+  if (conflicts) items.push({lvl: 'warn', t: `Нужно решение руководителя: ${poz(conflicts)}`, why: 'Правила противоречат друг другу: система не может выбрать цену сама.',
+    go: () => goPrices({status: ['CONFLICT']})});
+  if (dm != null && dm < 0) {
+    const jumps = ALERTS.filter(a => OPEN(a) && a.alert_code === 'COST_JUMP' && alertInScope(a)).length;
+    items.push({lvl: 'warn', t: `Маржа снизилась на ${F.num1(-dm * 100)} п. п. за ${n} дн.`, why: jumps ? `У ${jumps} позиций заметно выросла себестоимость — стоит проверить.` : 'Сравните точки на вкладке «Аналитика».',
+      go: () => jumps ? goProblems('warn', 'COST_JUMP') : (Nav.go('analytics'), anTabs.set('margin'))});
+  }
+  return items;
 }
 function renderOverview() {
   const rg = range(), pr = prevRange(), n = rg[1] - rg[0] + 1;
@@ -149,79 +174,58 @@ function renderOverview() {
   const daily = agg(...rg, d => d);
   const dIdx = []; for (let d = rg[0]; d <= rg[1]; d++) dIdx.push(d);
   const offers = OFFERS.filter(inScope);
-  const cnt = s => offers.filter(o => o.status === s).length;
-  const blocked = cnt('BLOCKED'), conflicts = cnt('CONFLICT'), proposed = cnt('PROPOSED');
-  const dqRows = sum(D.dq.filter(r => r[1] === 'CRIT'), r => r[2]);
-  const crit = ALERTS.filter(a => OPEN(a) && a.severity === 'CRIT' && alertInScope(a)).length;
-  const m = mg(cur), mPrev = mg(prev);
-  $('#ov-period').textContent = periodText(rg);
-  $('#ov-base').textContent = prev ? `изменение — к предыдущим ${n} дн. (${periodText(pr)})` : 'нет данных для сравнения с предыдущим периодом';
-  const where = State.s.store != null ? STORES[State.s.store].name : 'по сети';
-  const dm = m != null && mPrev != null ? m - mPrev : null;
-  $('#ov-summary').innerHTML = `Маржинальность ${where} за ${n} дн. — <b>${F.pct(m)}</b>${dm != null ? ` (${dm >= 0 ? 'выше' : 'ниже'} предыдущего периода на ${F.num1(Math.abs(dm) * 100)} п. п.)` : ''}.
-    Система предлагает изменить <b>${F.int(proposed)}</b> цен; <b>${F.int(conflicts)}</b> позиций ждут решения вручную, <b>${F.int(blocked)}</b> не рассчитаны из-за ошибок данных.`;
-
+  const proposed = offers.filter(o => o.status === 'PROPOSED').length;
+  const needDecision = offers.filter(o => o.status === 'CONFLICT' || o.status === 'BLOCKED').length;
+  const m = mg(cur), mPrev = mg(prev), dm = m != null && mPrev != null ? m - mPrev : null;
+  const items = problemItems(rg, offers, m, mPrev, dm);
+  $('#ov-period').textContent = `${periodText(rg)} · ${State.s.store != null ? STORES[State.s.store].name : 'вся сеть'}`;
+  $('#ov-verdict').innerHTML = `Маржа ${State.s.store != null ? 'точки' : 'сети'} — <b>${F.pct(m)}</b>${dm != null ? `, это на ${F.num1(Math.abs(dm) * 100)} п. п. ${dm >= 0 ? 'выше' : 'ниже'}, чем в прошлые ${n} дн.` : '.'}
+    ${items.length ? `Главное сейчас: ${items[0].t.charAt(0).toLowerCase() + items[0].t.slice(1)}.` : 'Серьёзных проблем не найдено.'}`;
   const kpis = [
-    {k: 'mg', l: 'Валовая маржинальность', tip: HELP.margin, v: F.pct(m), d: pr ? deltaPill(m, mPrev, {kind: 'pp'}) : '', sp: dIdx.map(d => (mg(daily.get(d)) ?? 0) * 100), col: '--c5'},
-    {k: 'rev', l: 'Выручка', tip: HELP.revenue, v: F.rubc(cur?.rev), d: deltaPill(cur?.rev, prev?.rev), sp: dIdx.map(d => daily.get(d)?.rev ?? 0)},
-    {k: 'gp', l: 'Валовая прибыль', tip: HELP.gp, v: F.rubc(gp(cur)), d: deltaPill(gp(cur), gp(prev)), sp: dIdx.map(d => gp(daily.get(d)) ?? 0)},
-    {k: 'prop', l: 'Предложено изменить цен', tip: HELP.proposed, v: F.int(proposed), note: `расчёт на ${F.date(D.meta.as_of)}`, go: 'Открыть список →',
-      act: () => goPrices({status: ['PROPOSED']})},
-    {k: 'conf', l: 'Нужно решение вручную', dot: 'warn', tip: HELP.conflict, v: F.int(conflicts), note: 'конфликт правил', go: 'Разобрать →',
-      act: () => goPrices({status: ['CONFLICT']})},
-    {k: 'dq', l: 'Проблемы данных', dot: 'bad', tip: HELP.dq, v: F.int(blocked), note: `позиций не рассчитано · ${F.int(dqRows)} строк исключено при загрузке`, go: 'Подробнее →',
-      act: () => { aLevel = 'crit'; aType = null; Nav.go('alerts'); renderAlerts(); }},
+    {k: 'mg', l: 'Маржа', tip: HELP.margin, v: F.pct(m), d: pr ? deltaPill(m, mPrev, {kind: 'pp'}) : '', note: pr ? 'к прошлому периоду' : ''},
+    {k: 'gp', l: 'Валовая прибыль', tip: HELP.gp, v: F.rubc(gp(cur)), d: deltaPill(gp(cur), gp(prev)), note: pr ? 'к прошлому периоду' : ''},
+    {k: 'prop', l: 'Цен к пересмотру', tip: HELP.proposed, v: F.int(proposed), note: 'предлагает система', act: () => goPrices({status: ['PROPOSED']})},
+    {k: 'dec', l: 'Ждут решения', dot: 'warn', tip: HELP.conflict + ' Сюда же входят позиции, где расчёт невозможен из-за ошибок данных.', v: F.int(needDecision),
+      note: 'конфликт правил или ошибка данных', act: () => goPrices({status: ['CONFLICT', 'BLOCKED']})},
   ];
-  $('#kpis').innerHTML = kpis.map(k => `<div class="card kpi ${k.act ? 'click' : ''}" data-k="${k.k}">
-    <div class="eyebrow"><span class="dot ${k.dot || ''}"></span>${k.l}${tip(k.tip)}</div>
-    <div class="kpi-value">${k.v}</div>
-    <div class="kpi-foot">${k.d || ''}<span>${k.note || (pr ? 'к предыдущему периоду' : '')}</span></div>
-    ${k.sp ? `<div class="spark" id="sp-${k.k}" aria-hidden="true"></div>` : `<span class="go">${k.go}</span>`}</div>`).join('');
-  kpis.forEach(k => {
-    if (k.act) clickable($(`[data-k="${k.k}"]`, $('#kpis')), e => { if (!e.target.closest('.tip')) k.act(); });
-    if (k.sp) spark('sp-' + k.k, k.sp, css(k.col || '--c1'));
-  });
-
-  // Что требует внимания: только факты из расчёта, порядок — по влиянию на достоверность и деньги
-  const devCnt = k => offers.filter(o => o.dev === k).length;
-  const items = [];
-  if (blocked) items.push({lvl: 'crit', t: `${F.int(blocked)} позиций без расчёта цены`, why: 'Ошибки в себестоимости или цене: маржа и рекомендация по ним недостоверны. Сначала исправить данные.',
-    num: F.int(blocked), sub: 'позиций', go: () => goPrices({status: ['BLOCKED']})});
-  if (devCnt('below_cost')) items.push({lvl: 'crit', t: 'Цена ниже себестоимости', why: 'Каждая продажа этих позиций убыточна.', num: F.int(devCnt('below_cost')), sub: 'позиций',
-    go: () => goPrices({dev: ['below_cost']})});
-  if (devCnt('below_min')) items.push({lvl: 'crit', t: 'Маржа ниже минимальной', why: 'Плановая маржа ниже порога правила. По большинству система уже предложила новую цену.',
-    num: F.int(devCnt('below_min')), sub: 'позиций', go: () => goPrices({dev: ['below_min']})});
-  if (conflicts) items.push({lvl: 'warn', t: 'Правила противоречат друг другу', why: 'Для минимальной маржи нужна цена выше лимита изменения — система не может выбрать цену сама.',
-    num: F.int(conflicts), sub: 'решить вручную', go: () => goPrices({status: ['CONFLICT']})});
-  if (dm != null && dm < 0) {
-    const jumps = ALERTS.filter(a => OPEN(a) && a.alert_code === 'COST_JUMP' && alertInScope(a)).length;
-    items.push({lvl: 'warn', t: `Маржинальность снизилась на ${F.num1(-dm * 100)} п. п.`, why: `К предыдущим ${n} дн.${jumps ? ` Возможный фактор: у ${jumps} позиций заметно выросла себестоимость — проверить.` : ''}`,
-      num: F.pct(m), sub: `было ${F.pct(mPrev)}`, go: () => { aLevel = 'warn'; aType = jumps ? 'COST_JUMP' : null; Nav.go('alerts'); renderAlerts(); }});
-  }
-  if (State.s.store == null) {
-    const byS = agg(...rg, (d, s) => s), net = m;
-    const worst = STORES.map(s => ({s, m: mg(byS.get(s.i))})).filter(x => x.m != null).sort((a, b) => a.m - b.m)[0];
-    if (worst && net != null && worst.m < net) items.push({lvl: 'info', t: `Самая низкая маржа — ${worst.s.name}`, why: `${F.pct(worst.m)} при ${F.pct(net)} по сети. Нажмите, чтобы посмотреть только эту точку.`,
-      num: F.pp(worst.m - net), sub: 'к сети', go: () => State.set({store: worst.s.i})});
-  }
-  $('#attn').innerHTML = items.length ? items.map((x, i) => `<button class="attn-item" data-i="${i}" style="--ac:var(${LEVEL[x.lvl].ac})">
+  $('#kpis').innerHTML = kpis.map(k => `<div class="card kpi plain ${k.act ? 'click' : ''}" data-k="${k.k}">
+    <div class="eyebrow">${k.dot ? `<span class="dot ${k.dot}"></span>` : ''}${k.l}${tip(k.tip)}</div>
+    <div class="kpi-value">${k.v}</div><div class="kpi-foot">${k.d || ''}<span>${k.note}</span></div></div>`).join('');
+  kpis.forEach(k => { if (k.act) clickable($(`[data-k="${k.k}"]`, $('#kpis')), e => { if (!e.target.closest('.tip')) k.act(); }); });
+  const top = items.slice(0, 3);
+  $('#attn-hint').textContent = items.length > 3 ? `показаны 3 из ${items.length}` : '';
+  $('#attn').innerHTML = top.length ? top.map((x, i) => `<button class="attn-item" data-i="${i}" style="--ac:var(${LEVEL[x.lvl].ac})">
       <span class="sevc"><span class="pill ${LEVEL[x.lvl].p}">${LEVEL[x.lvl].l}</span></span>
       <span><span class="t">${x.t}</span><span class="why" style="display:block">${x.why}</span></span>
-      <span class="num">${x.num}<small>${x.sub}</small></span><span class="arr" aria-hidden="true">→</span></button>`).join('')
+      <span></span><span class="arr" aria-hidden="true">→</span></button>`).join('')
     : '<div class="attn-ok">Проблем, требующих внимания, не найдено.</div>';
-  $$('#attn .attn-item').forEach(b => b.onclick = () => items[+b.dataset.i].go());
-
-  // сначала убыточные цены и маржа ниже минимальной (деньги), затем позиции без расчёта (данные)
-  const PRIO = {below_cost: 0, below_min: 1, data_error: 2};
-  const prio = offers.filter(o => o.dev in PRIO)
-    .sort((a, b) => PRIO[a.dev] - PRIO[b.dev] || (a.plan_margin ?? 9) - (b.plan_margin ?? 9));
-  $('#prio-hint').textContent = `${F.int(prio.length)} позиций: убыточные цены, маржа ниже минимальной, ошибки данных · клик — карточка`;
-  tPrio.setRows(prio.map(o => ({...o, dev_h: `<span class="pill ${DEV[o.dev].cls === 'bad' ? 'p-bad' : 'p-warn'}">${DEV[o.dev].l}</span>`,
-    status_h: o.status === 'BLOCKED' ? '<span class="pill">Сначала исправить данные</span>' : o.status_h})));
+  $$('#attn .attn-item').forEach(b => b.onclick = () => top[+b.dataset.i].go());
+  $('#cta-recs').textContent = `Пересмотреть цены: ${F.int(proposed)} предложений →`;
+  $('#cta-recs').onclick = () => goPrices({status: ['PROPOSED']});
+  const nProb = ALL_ROWS.filter(alertInScope).length;
+  $('#cta-problems').textContent = `Все проблемы и ошибки (${F.int(nProb)})`;
+  $('#cta-problems').onclick = () => goProblems();
 
   const minM = D.rules.find(r => r.scope === 'global')?.mm;
-  $('#trend-hint').textContent = periodText(rg);
+  $('#trend-hint').textContent = `пунктир — минимум по правилу${minM ? ' ' + F.pct(minM) : ''}`;
   Charts.set('c-trend', () => ({
+    legend: {show: false}, grid: {left: 8, right: 12, top: 12, bottom: 4, containLabel: true},
+    tooltip: {trigger: 'axis', valueFormatter: v => NF1.format(v) + '%'},
+    xAxis: Charts.axis('category', {data: dIdx.map(d => F.dshort(DAYS[d])), splitLine: {show: false}}),
+    yAxis: Charts.axis('value', {min: v => Math.max(0, Math.floor(Math.min(v.min, (minM ?? 1) * 100) - 3)), max: v => Math.ceil(v.max + 2), axisLabel: {formatter: pctAx}}),
+    series: [{name: 'Маржа', type: 'line', data: dIdx.map(d => { const v = mg(daily.get(d)); return v == null ? null : +(v * 100).toFixed(2); }),
+      smooth: true, symbol: 'none', lineStyle: {width: 3, color: css('--c1')}, areaStyle: {color: css('--c1') + '14'},
+      markLine: minM ? {symbol: 'none', silent: true, lineStyle: {color: css('--bad'), type: 'dashed'}, label: {show: false}, data: [{yAxis: minM * 100}]} : undefined}],
+  }));
+}
+
+/* ---------- 3. Аналитика: маржа и продажи ---------- */
+function renderMargin() {
+  const rg = range(), daily = agg(...rg, d => d);
+  const dIdx = []; for (let d = rg[0]; d <= rg[1]; d++) dIdx.push(d);
+  const minM = D.rules.find(r => r.scope === 'global')?.mm;
+  $('#trend2-hint').textContent = periodText(rg);
+  Charts.set('c-trend2', () => ({
     legend: {top: 0, left: 0}, grid: {left: 8, right: 8, top: 40, bottom: 4, containLabel: true},
     tooltip: {trigger: 'axis'},
     xAxis: Charts.axis('category', {data: dIdx.map(d => F.dshort(DAYS[d])), splitLine: {show: false}}),
@@ -251,43 +255,47 @@ function renderOverview() {
       markLine: {symbol: 'none', silent: true, lineStyle: {color: css('--dim'), type: 'dashed'}, label: {formatter: 'сеть', color: css('--muted')},
         data: [{xAxis: +(net * 100).toFixed(2)}]}}],
   }), p => State.set({store: State.s.store === p.data.si ? null : p.data.si}));
-}
-
-/* ---------- 2. Цены и рекомендации ---------- */
-let pStatus = [], pDev = [], tPrices, stChips, devChips;
-function goPrices({status = [], dev = []} = {}) { pStatus = status; pDev = dev; stChips.set(status); devChips.set(dev); Nav.go('prices'); renderPrices(); }
-function initPrices() {
-  stChips = chipGroup('p-status', [], {multi: true, allLabel: 'Все', onChange: v => { pStatus = v; renderPrices(); }});
-  devChips = chipGroup('p-dev', [], {multi: true, allLabel: 'Любое', onChange: v => { pDev = v; renderPrices(); }});
-  tPrices = new Table('t-prices', {
-    cols: [{k: 'product_name', label: 'Товар', t: 'text', w: 160}, {k: 'store', label: 'Точка', t: 'text', w: 140},
-      {k: 'current_price', label: 'Цена сейчас', t: 'rub'}, {k: 'rec_show', label: 'Предлагаемая', t: 'rub', na: '—'},
-      {k: 'chg_abs', label: 'Изм., ₽', t: 'rub', na: '—'}, {k: 'chg_pct', label: 'Изм., %', t: 'spct', na: '—'},
-      {k: 'plan_margin', label: 'Маржа сейчас', t: 'pct', help: HELP.planMargin}, {k: 'm_after', label: 'Маржа после', t: 'pct', na: '—', help: HELP.afterMargin},
-      {k: 'reason_text', label: 'Причина', t: 'text', w: 280}, {k: 'status_h', label: 'Статус', t: 'html', help: 'Нажмите на строку — в карточке объяснено, что означает статус'}],
-    rows: OFFERS, page: 20, search: ['product_name', 'sku', 'store', 'cat'], onRow: offerCard, csv: 'recommendations', sort: 'prio', dir: 1,
-  });
-}
-function renderPrices() {
-  const scope = OFFERS.filter(inScope);
-  $('#prices-eyebrow').textContent = `Расчёт на ${F.date(D.meta.as_of)} · правила v${D.meta.rule_version} · ${State.s.store != null ? STORES[State.s.store].name : 'все точки'} · ${State.s.cat != null ? CATS[State.s.cat].name : 'все категории'}`;
-  $('#prices-scope').innerHTML = `Цены рассчитаны на дату <b>${F.date(D.meta.as_of)}</b>. Фильтры точки и категории применяются; период не влияет на рекомендации.
-    «Предлагаемая цена» — расчёт системы, а не согласованная и не применённая в кассе цена.`;
-  stChips.update(STATUS_ORDER.map(s => ({v: s, label: STATUS[s].l, n: scope.filter(o => o.status === s).length,
-    cls: s === 'BLOCKED' ? 'bad' : s === 'CONFLICT' ? 'warn' : s === 'NO_CHANGE' ? 'ok' : ''})));
-  devChips.update(DEV_ORDER.map(k => ({v: k, label: DEV[k].l, n: scope.filter(o => o.dev === k).length, cls: DEV[k].cls})));
-  const pred = o => inScope(o) && (!pStatus.length || pStatus.includes(o.status)) && (!pDev.length || pDev.includes(o.dev));
-  tPrices.filter(pred);
-  const ch = OFFERS.filter(o => pred(o) && o.status === 'PROPOSED').map(o => o.change_pct * 100);
+  const ch = OFFERS.filter(o => inScope(o) && o.status === 'PROPOSED').map(o => o.change_pct * 100);
   const bins = Array.from({length: 11}, (_, i) => i);
   Charts.set('c-hist', () => ({
     grid: {left: 8, right: 8, top: 16, bottom: 4, containLabel: true},
     tooltip: {trigger: 'axis', axisPointer: {type: 'shadow'}, formatter: ps => `рост цены на ${ps[0].name}: <b>${ps[0].value}</b> позиций`},
     xAxis: Charts.axis('category', {data: bins.map(b => b === 10 ? '10% и более' : `${b}–${b + 1}%`), splitLine: {show: false}}),
-    yAxis: Charts.axis('value', {name: 'позиций', nameTextStyle: {color: css('--dim')}}),
+    yAxis: Charts.axis('value'),
     series: [{type: 'bar', barMaxWidth: 34, data: bins.map(b => ch.filter(v => b === 10 ? v >= 10 : v >= b && v < b + 1).length),
       itemStyle: {borderRadius: [8, 8, 0, 0], color: css('--c1')}}],
   }));
+}
+
+/* ---------- 2. Цены и рекомендации ---------- */
+// по умолчанию — то, что нужно сделать: цены к пересмотру
+let pStatus = ['PROPOSED'], pDev = [], tPrices, stChips, devChips;
+function goPrices({status = [], dev = []} = {}) {
+  pStatus = status; pDev = dev; stChips.set(status); devChips.set(dev);
+  if (dev.length) $('#p-dev').closest('details').open = true;
+  Nav.go('recs'); recsTabs.set('prices'); renderPrices();
+}
+function initPrices() {
+  stChips = chipGroup('p-status', [], {multi: true, allLabel: 'Все', value: pStatus, onChange: v => { pStatus = v; renderPrices(); }});
+  devChips = chipGroup('p-dev', [], {multi: true, allLabel: 'Любое', onChange: v => { pDev = v; renderPrices(); }});
+  tPrices = new Table('t-prices', {
+    cols: [{k: 'item_h', label: 'Товар и точка', t: 'html', w: 180},
+      {k: 'current_price', label: 'Цена', t: 'rub'}, {k: 'rec_show', label: 'Новая', t: 'rub', na: '—', help: 'Предлагаемая цена — расчёт системы'},
+      {k: 'chg_h', label: 'Изм.', t: 'html', help: 'В рублях и в процентах к текущей цене'},
+      {k: 'mg_h', label: 'Маржа: сейчас → после', t: 'html', help: HELP.planMargin + ' ' + HELP.afterMargin},
+      {k: 'reason_short', label: 'Причина', t: 'text', w: 180, help: 'Кратко; полное объяснение — в карточке позиции'}, {k: 'status_h', label: 'Статус', t: 'html', help: 'Нажмите на строку — в карточке объяснено, что означает статус'}],
+    rows: OFFERS, page: 20, search: ['product_name', 'sku', 'store', 'cat'], onRow: offerCard, csv: 'recommendations', sort: 'prio', dir: 1,
+  });
+}
+function renderPrices() {
+  const scope = OFFERS.filter(inScope);
+  $('#recs-eyebrow').textContent = `Расчёт на ${F.date(D.meta.as_of)} · ${State.s.store != null ? STORES[State.s.store].name : 'все точки'} · ${State.s.cat != null ? CATS[State.s.cat].name : 'все категории'}`;
+  $('#asof').textContent = F.date(D.meta.as_of);
+  stChips.update(STATUS_ORDER.map(s => ({v: s, label: STATUS[s].l, n: scope.filter(o => o.status === s).length,
+    cls: s === 'BLOCKED' ? 'bad' : s === 'CONFLICT' ? 'warn' : s === 'NO_CHANGE' ? 'ok' : ''})));
+  devChips.update(DEV_ORDER.map(k => ({v: k, label: DEV[k].l, n: scope.filter(o => o.dev === k).length, cls: DEV[k].cls})));
+  const pred = o => inScope(o) && (!pStatus.length || pStatus.includes(o.status)) && (!pDev.length || pDev.includes(o.dev));
+  tPrices.filter(pred);
 }
 
 /* ---------- Карточка изменения цены ---------- */
@@ -402,7 +410,6 @@ function initAlerts() {
 }
 function renderAlerts() {
   const scope = ALL_ROWS.filter(alertInScope);
-  $('#al-eyebrow').textContent = `Расчёт на ${F.date(D.meta.as_of)} · ${State.s.store != null ? STORES[State.s.store].name + ' и общие для сети' : 'вся сеть'}`;
   $('#a-levels').innerHTML = ['crit', 'warn', 'info'].map(k => {
     const part = scope.filter(r => r.lvl === k), rel = part.filter(r => r.reliability).length;
     return `<div class="grp ${aLevel === k ? 'on' : ''}" data-l="${k}" style="--ac:var(${LEVEL[k].ac})" aria-pressed="${aLevel === k}">
@@ -421,7 +428,7 @@ function renderAlerts() {
       what: info.what, next: info.next, order: ({crit: 0, warn: 100, info: 200}[t.lvl]) + (t.reliability ? 0 : 50) - t.n / 1000};
   }));
   const parts = [aLevel ? LEVEL[aLevel].l : null, aType ? (byType[aType]?.title || TYPE_TITLE[aType]) : null].filter(Boolean);
-  $('#a-list-title').textContent = parts.length ? 'Показано: ' + parts.join(' · ') : 'Все открытые предупреждения';
+  $('#a-list-title').textContent = parts.length ? 'Список: ' + parts.join(' · ') : 'Список всех записей';
   $('#a-reset').hidden = !parts.length;
   tAlerts.filter(r => alertInScope(r) && (!aLevel || r.lvl === aLevel) && (!aType || r.type === aType));
 }
@@ -598,14 +605,28 @@ function initHistory() {
 /* ---------- Запуск ---------- */
 shell();
 buildFilters();
-initOverview(); initPrices(); initAlerts(); initScenarios(); initHistory();
-$('#cnt-prices').textContent = F.int(OFFERS.filter(o => o.status === 'PROPOSED').length);
-$('#cnt-alerts').textContent = F.int(ALERTS.filter(a => a.severity === 'CRIT' && OPEN(a)).length);
+initPrices(); initAlerts(); initScenarios(); initHistory();
+const recsTabs = tabs('recs-tabs', k => { recsTab = k; syncFilters(); });
+const anTabs = tabs('an-tabs', k => { anTab = k; syncFilters(); });
+$('#cnt-recs').textContent = F.int(OFFERS.filter(o => o.status === 'PROPOSED').length);
+$('#go-method').onclick = () => { Nav.go('analytics'); anTabs.set('method'); };
 $('#foot').innerHTML = `${esc(D.meta.note)} Статичная демо-версия: данные выгружены из базы проекта (расчёт на ${F.date(D.meta.as_of)}), собрано ${D.meta.built}.
   Согласование рекомендаций и пересчёт по новым данным — в полной версии (запуск через Docker, см. README).`;
-function renderAll() { syncFilters(); renderOverview(); renderPrices(); renderAlerts(); renderScenarios(); }
+function renderAll() { syncFilters(); renderOverview(); renderPrices(); renderAlerts(); renderMargin(); renderScenarios(); }
 State.on(renderAll);
 const navGo = Nav.go.bind(Nav);
 Nav.go = (k, push) => { navGo(k, push); syncFilters(); };
+// Старые ссылки (#prices, #alerts, #scenarios, #history) ведут на нужную вкладку новой структуры.
+const ALIAS = {prices: ['recs', 'prices'], alerts: ['recs', 'problems'], scenarios: ['analytics', 'scenarios'], history: ['analytics', 'method']};
+Nav.fromHash = function () {
+  const k = (location.hash || '').slice(1);
+  if (ALIAS[k]) {
+    const [v, t] = ALIAS[k];
+    history.replaceState(null, '', '#' + v);
+    Nav.go(v, false); (v === 'recs' ? recsTabs : anTabs).set(t);
+    return;
+  }
+  Nav.go(document.getElementById('v-' + k) ? k : 'overview', false);
+};
 Nav.init();
 renderAll();

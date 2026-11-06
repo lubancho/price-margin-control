@@ -275,4 +275,6 @@ function shell() {
   $('#drawer').setAttribute('role', 'dialog'); $('#drawer').setAttribute('aria-modal', 'true'); $('#drawer').setAttribute('aria-hidden', 'true');
   initTheme();
   const ld = document.getElementById('loading'); if (ld) ld.remove();
+  // графики внутри раскрываемых блоков рисуются при раскрытии
+  document.addEventListener('toggle', e => { if (e.target.open) requestAnimationFrame(() => Charts.redrawAll()); }, true);
 }

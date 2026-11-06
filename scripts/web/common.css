@@ -276,3 +276,36 @@ tbody tr.click:focus-visible td{background:var(--tint)}
   .task-grid{grid-template-columns:1fr}.tabs button{padding:8px 10px}}
 @media (max-width:860px){aside{padding:14px 12px}.brand{padding:0 6px 10px}aside nav{display:grid;grid-template-columns:1fr 1fr;gap:4px}
   .nav{padding:7px 8px;font-size:12.5px;gap:8px}.nav .ic{width:24px;height:24px}.side-foot{display:none}}
+
+/* ===== Редизайн 3: меньше элементов на первом уровне ===== */
+.verdict{font-size:19px;line-height:1.5;font-weight:600;color:var(--fg);max-width:900px;margin:4px 0 18px}
+.verdict b{color:var(--lil)}
+.btn.primary{background:var(--lil);border-color:var(--lil);color:#fff;padding:11px 20px;font-size:14.5px;font-weight:800;border-radius:12px}
+.btn.primary:hover{color:#fff;filter:brightness(1.08)}
+:root[data-theme="dark"] .btn.primary{color:#141029}
+.cta{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:22px 0 4px}
+.cta .link{font-size:14px}
+.sec-title{font-size:16px;font-weight:800;margin:26px 0 10px;color:var(--fg)}
+.sec-title .hint{font-weight:600;margin-left:8px}
+.kpi.plain{box-shadow:none}
+.g-kpi4{grid-template-columns:repeat(4,minmax(0,1fr))}
+@media (max-width:1100px){.g-kpi4{grid-template-columns:1fr 1fr}}
+.tabs.sm{margin:4px 0 14px}.tabs.sm button{padding:7px 12px;font-size:13px}
+.side-link{all:unset;cursor:pointer;color:var(--dim);font-size:12.5px;padding:6px 12px;margin-top:10px;display:block}
+.side-link:hover{color:var(--fg)}
+.nav-sub{font-size:11px;color:var(--dim);font-weight:600;display:block;margin-top:1px}
+.reports{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+@media (max-width:1100px){.reports{grid-template-columns:1fr}}
+.report h3{margin:0 0 4px;font-size:15.5px}
+.report .q{color:var(--text);font-size:13.5px;margin:0 0 10px}
+.report ol{margin:0 0 10px;padding-left:20px;font-size:13.5px;color:var(--text)}
+.report ol li{margin:2px 0}
+.report ol b{font-variant-numeric:tabular-nums}
+.report .acts{display:flex;gap:8px;flex-wrap:wrap}
+.report .full{margin-top:12px}
+details.more>summary{cursor:pointer;color:var(--lil);font-weight:700;font-size:13.5px;list-style:none;margin:6px 0}
+details.more>summary::-webkit-details-marker{display:none}
+details.more>summary::before{content:"＋ ";}
+details.more[open]>summary::before{content:"− ";}
+.method-doc{font-size:13px;color:var(--text);white-space:pre-line;background:var(--glass2);border:1px solid var(--bd);border-radius:12px;padding:10px 14px;margin:8px 0}
+
