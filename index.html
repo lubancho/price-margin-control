@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Контроль цен и маржинальности — демо</title>
+<meta name="description" content="Простой инструмент контроля цен: что происходит с маржой, какие цены пересмотреть и почему. Синтетические данные.">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%234536a8'/%3E%3Ctext x='16' y='21' font-size='13' font-family='Arial' font-weight='700' fill='%23fff' text-anchor='middle'%3E%E2%82%BD%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="common.css">
+</head>
+<body>
+<div class="app noside">
+<main>
+  <header class="filterbar topbar" id="filterbar" role="banner">
+    <button class="brand-mini" data-go="overview" aria-label="На сводку"><span class="logo" aria-hidden="true">ЦМ</span><span>Цены и маржа</span></button>
+    <span class="sp"></span>
+    <div class="seg" id="f-period" role="group" aria-label="Период продаж"></div>
+    <div class="chips" id="f-active" aria-live="polite"></div>
+    <button class="top-link" data-go="method">Справка</button>
+    <button class="theme-btn icon" aria-label="Сменить тему"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg><span class="theme-label sr">Тёмная тема</span></button>
+  </header>
+  <nav class="crumbs" id="crumbs" aria-label="Где вы находитесь"></nav>
+  <div class="loading" id="loading">Загрузка данных…</div>
+  <noscript><div class="callout bad">Для работы дашборда нужен JavaScript.</div></noscript>
+
+  <!-- Уровень 1. Сводка: одна фраза и четыре «двери» -->
+  <section class="view" id="v-overview" aria-labelledby="h-ov">
+    <h1 id="h-ov" class="sr">Сводка</h1>
+    <p class="verdict big-verdict" id="ov-verdict"></p>
+    <div class="doors" id="doors"></div>
+  </section>
+
+  <!-- Уровень 2. Маржа по точкам -->
+  <section class="view" id="v-margin" aria-labelledby="h-mg">
+    <h1 id="h-mg">Маржа по точкам</h1>
+    <p class="verdict" id="mg-verdict"></p>
+    <div class="card rank" id="mg-rank"></div>
+    <div class="next" id="mg-next"></div>
+    <details class="more"><summary>Маржа и выручка по дням</summary>
+      <div class="card mt"><div class="chart" id="c-trend2" role="img" aria-label="Выручка и маржа по дням"></div></div></details>
+  </section>
+
+  <!-- Уровень 3. Одна точка -->
+  <section class="view" id="v-store" aria-labelledby="h-st">
+    <h1 id="h-st"></h1>
+    <p class="verdict" id="st-verdict"></p>
+    <div class="card rank" id="st-list"></div>
+    <div class="next" id="st-next"></div>
+  </section>
+
+  <!-- Уровень 2. Цены к пересмотру -->
+  <section class="view" id="v-prices" aria-labelledby="h-pr">
+    <h1 id="h-pr">Цены к пересмотру</h1>
+    <p class="verdict" id="pr-verdict"></p>
+    <div class="groups" id="pr-groups"></div>
+    <div class="chips mt" id="p-dev" role="group" aria-label="Причина"></div>
+    <div class="card mt"><div id="t-prices"></div></div>
+  </section>
+
+  <!-- Уровень 2. Ошибки в данных и правилах -->
+  <section class="view" id="v-problems" aria-labelledby="h-pb">
+    <h1 id="h-pb">Ошибки в данных и правилах</h1>
+    <p class="verdict" id="pb-verdict"></p>
+    <div class="groups" id="a-levels"></div>
+    <div class="card mt"><div id="t-types"></div></div>
+    <div class="card mt" id="a-list-card" hidden><div class="card-head"><h3 id="a-list-title"></h3><button class="link" id="a-reset">Закрыть</button></div><div id="t-alerts"></div></div>
+  </section>
+
+  <!-- Уровень 3. Что если изменить правило -->
+  <section class="view" id="v-scenarios" aria-labelledby="h-sc">
+    <h1 id="h-sc">Что если изменить правило</h1>
+    <p class="verdict">Двигайте ползунки — прибыль пересчитается на продажах последних 28 дней. Это расчёт, а не прогноз.</p>
+    <div class="grid g-46 mt">
+      <div class="card"><div class="ctl" id="s-ctl"></div></div>
+      <div>
+        <div class="hero" id="s-hero" aria-live="polite"></div>
+        <div class="card mt"><div class="card-head"><h3>Прибыль по категориям, ₽ за 28 дней</h3></div><div class="chart" id="c-scats" role="img" aria-label="Прибыль по категориям: сейчас и при новых ценах"></div></div>
+      </div>
+    </div>
+    <details class="more mt"><summary>Какие позиции меняются сильнее всего</summary>
+      <div class="grid g-46 mt"><div class="card"><div class="chart" id="c-sstatus" role="img" aria-label="Статусы рекомендаций в расчёте"></div></div>
+        <div class="card"><div id="t-scen"></div></div></div></details>
+    <details class="more"><summary>Допущения расчёта</summary><div class="callout warn mt" id="s-assume"></div></details>
+  </section>
+
+  <!-- Справка -->
+  <section class="view" id="v-method" aria-labelledby="h-mt">
+    <h1 id="h-mt">Справка</h1>
+    <div class="grid g-2 mt">
+      <div class="card method" id="m-method"></div>
+      <div class="card"><div class="card-head"><h3>Действующие правила цены</h3><span class="hint" id="rules-hint"></span></div><div id="t-rules"></div></div>
+    </div>
+    <details class="more mt"><summary>Ограничения модели</summary><div class="card mt method" id="m-limits"></div></details>
+    <details class="more"><summary>Качество исходных данных</summary><div class="card mt"><div id="t-dq"></div></div></details>
+    <details class="more"><summary>Запуски расчёта и журнал событий</summary>
+      <div class="card mt"><div class="card-head"><h3>Запуски расчёта</h3></div><div id="t-runs"></div></div>
+      <div class="card mt"><div class="card-head"><h3>Журнал событий</h3><span class="hint">записи нельзя изменить или удалить</span></div><div id="t-events"></div></div></details>
+  </section>
+
+  <div class="foot" id="foot"></div>
+</main>
+</div>
+
+<div class="drawer-bg" id="drawer-bg"></div>
+<div class="drawer" id="drawer" aria-label="Карточка"><button class="close" aria-label="Закрыть карточку и вернуться к списку">×</button><div id="drawer-body"></div></div>
+
+<script src="echarts.min.js"></script>
+<script src="data.js"></script>
+<script src="common.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
